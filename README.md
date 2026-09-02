@@ -22,6 +22,13 @@ contains the aligned observations, five fixed PNG plots, and `manifest.json`
 with inputs, fixed method settings, dependency versions, timestamps, provider
 identity, cache provenance, and SHA-256 hashes for every artifact.
 
+The full-period outputs are always retained. The same five plots are also
+generated for every calendar quarter in the request under `quarters/YYYYQn/`.
+Quarterly transforms use only that quarter's aligned common closes; parameters
+are never re-estimated. Plot labels state the quarter, common-observation count,
+relevant descriptive sample size, and qualifying complete-window event counts.
+`quarterly_summary.csv` provides the corresponding descriptive inventory.
+
 Use `--offline` to require an existing cache entry. The event view uses the
 fixed default definition `abs(log return) >= 0.03` and a fixed ±5 common-session
 window; these can be changed explicitly for visual exploration and are recorded

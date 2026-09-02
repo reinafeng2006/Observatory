@@ -81,11 +81,13 @@ def lagged_correlations(frame: pd.DataFrame, a: str, b: str) -> pd.DataFrame:
     ra, rb = frame[f"log_return_{a}"], frame[f"log_return_{b}"]
     # At lag k, correlate A(t) with B(t+k); signs are descriptive only.
     values = []
+    sample_sizes = []
     for lag in range(-5, 6):
         pairs = pd.concat([ra, rb.shift(-lag)], axis=1).dropna()
         correlation = pairs.iloc[:, 0].corr(pairs.iloc[:, 1]) if len(pairs) >= 2 else np.nan
         values.append(correlation)
-    return pd.DataFrame({"lag": range(-5, 6), "correlation": values})
+        sample_sizes.append(len(pairs))
+    return pd.DataFrame({"lag": range(-5, 6), "correlation": values, "sample_size": sample_sizes})
 
 
 def event_responses(frame: pd.DataFrame, source: str, response: str, threshold: float, window: int) -> pd.DataFrame:
@@ -105,21 +107,26 @@ def event_responses(frame: pd.DataFrame, source: str, response: str, threshold: 
     )
 
 
-def _finish(fig: plt.Figure, path: Path) -> None:
-    fig.suptitle(LABEL, fontsize=9, color="firebrick")
-    fig.tight_layout()
+def _finish(fig: plt.Figure, path: Path, context: str | None = None) -> None:
+    heading = LABEL if context is None else f"{LABEL}\n{context}"
+    fig.suptitle(heading, fontsize=9, color="firebrick")
+    fig.tight_layout(rect=(0, 0, 1, .92 if context else .95))
     fig.savefig(path, dpi=150, metadata={"Description": LABEL})
     plt.close(fig)
 
 
-def write_plots(frame: pd.DataFrame, config: RunConfig, output: Path) -> list[Path]:
+def write_plots(frame: pd.DataFrame, config: RunConfig, output: Path, quarter: str | None = None) -> list[Path]:
     a, b = config.ticker_a, config.ticker_b
+    common_n = len(frame)
+    return_n = frame[[f"log_return_{a}", f"log_return_{b}"]].dropna().shape[0]
+    context = None if quarter is None else f"{quarter} | common observations n={common_n}"
     made: list[Path] = []
-    fig, ax = plt.subplots(figsize=(10, 4)); ax.plot(frame.date, frame[f"log_return_{a}"], label=a, alpha=.75); ax.plot(frame.date, frame[f"log_return_{b}"], label=b, alpha=.75); ax.set(title="Daily log-return overlay", ylabel="log return"); ax.legend(); made.append(output / "01_return_overlay.png"); _finish(fig, made[-1])
-    fig, ax = plt.subplots(figsize=(10, 4)); ax.plot(frame.date, frame[f"normalized_{a}"], label=a); ax.plot(frame.date, frame[f"normalized_{b}"], label=b); ax.axhline(1, color="grey", lw=.7); ax.set(title="Normalized cumulative price", ylabel="first common close = 1"); ax.legend(); made.append(output / "02_normalized_price.png"); _finish(fig, made[-1])
-    fig, ax = plt.subplots(figsize=(5, 5)); ax.scatter(frame[f"log_return_{a}"], frame[f"log_return_{b}"], s=12, alpha=.55); ax.axhline(0, color="grey", lw=.7); ax.axvline(0, color="grey", lw=.7); ax.set(title="Contemporaneous daily returns", xlabel=f"{a} log return", ylabel=f"{b} log return"); made.append(output / "03_return_scatter.png"); _finish(fig, made[-1])
+    fig, ax = plt.subplots(figsize=(10, 4)); ax.plot(frame.date, frame[f"log_return_{a}"], label=a, alpha=.75); ax.plot(frame.date, frame[f"log_return_{b}"], label=b, alpha=.75); ax.set(title=f"Daily log-return overlay | paired returns n={return_n}", ylabel="log return"); ax.legend(); made.append(output / "01_return_overlay.png"); _finish(fig, made[-1], context)
+    fig, ax = plt.subplots(figsize=(10, 4)); ax.plot(frame.date, frame[f"normalized_{a}"], label=a); ax.plot(frame.date, frame[f"normalized_{b}"], label=b); ax.axhline(1, color="grey", lw=.7); ax.set(title=f"Normalized cumulative price | common closes n={common_n}", ylabel="first common close = 1"); ax.legend(); made.append(output / "02_normalized_price.png"); _finish(fig, made[-1], context)
+    fig, ax = plt.subplots(figsize=(5, 5)); ax.scatter(frame[f"log_return_{a}"], frame[f"log_return_{b}"], s=12, alpha=.55); ax.axhline(0, color="grey", lw=.7); ax.axvline(0, color="grey", lw=.7); ax.set(title=f"Contemporaneous daily returns | paired returns n={return_n}", xlabel=f"{a} log return", ylabel=f"{b} log return"); made.append(output / "03_return_scatter.png"); _finish(fig, made[-1], context)
     lags = lagged_correlations(frame, a, b); lags.to_csv(output / "lagged_correlations.csv", index=False)
-    fig, ax = plt.subplots(figsize=(7, 4)); ax.bar(lags.lag, lags.correlation); ax.axhline(0, color="black", lw=.7); ax.set(title=f"Lagged cross-correlation: {a}(t) vs {b}(t+lag)", xlabel="lag (common trading sessions)", ylabel="Pearson correlation", xticks=range(-5, 6)); made.append(output / "04_lagged_cross_correlation.png"); _finish(fig, made[-1])
+    lag_n = f"n={lags.sample_size.min()}–{lags.sample_size.max()} by lag"
+    fig, ax = plt.subplots(figsize=(7, 4)); ax.bar(lags.lag, lags.correlation); ax.axhline(0, color="black", lw=.7); ax.set(title=f"Lagged cross-correlation: {a}(t) vs {b}(t+lag) | {lag_n}", xlabel="lag (common trading sessions)", ylabel="Pearson correlation", xticks=range(-5, 6)); made.append(output / "04_lagged_cross_correlation.png"); _finish(fig, made[-1], context)
     responses = pd.concat([event_responses(frame, a, b, config.event_threshold, config.event_window), event_responses(frame, b, a, config.event_threshold, config.event_window)], ignore_index=True)
     responses.to_csv(output / "event_responses.csv", index=False, date_format="%Y-%m-%d")
     fig, axes = plt.subplots(1, 2, figsize=(11, 4), sharey=True)
@@ -130,10 +137,21 @@ def write_plots(frame: pd.DataFrame, config: RunConfig, output: Path) -> list[Pa
         if not subset.empty:
             mean = subset.groupby("offset").response_cumulative_log_return.mean()
             ax.plot(mean.index, mean, color="black", lw=2, label="event mean (descriptive)"); ax.legend()
-        ax.axvline(0, color="firebrick", lw=.8); ax.axhline(0, color="grey", lw=.7); ax.set(title=f"{source} large move → {response} response", xlabel="common-session offset")
+        event_n = subset.event_date.nunique()
+        ax.axvline(0, color="firebrick", lw=.8); ax.axhline(0, color="grey", lw=.7); ax.set(title=f"{source} large move → {response} response\nqualifying complete-window events n={event_n}", xlabel="common-session offset")
     axes[0].set_ylabel("response cumulative log return")
-    made.append(output / "05_event_centered_response.png"); _finish(fig, made[-1])
+    made.append(output / "05_event_centered_response.png"); _finish(fig, made[-1], context)
     return made
+
+
+def quarter_frame(frame: pd.DataFrame, quarter: pd.Period, ticker_a: str, ticker_b: str) -> pd.DataFrame:
+    """Slice common closes first, then recompute fixed within-quarter transforms."""
+    result = frame.loc[frame.date.dt.to_period("Q") == quarter, ["date", f"close_{ticker_a}", f"close_{ticker_b}"]].copy()
+    result.reset_index(drop=True, inplace=True)
+    for ticker in (ticker_a, ticker_b):
+        result[f"log_return_{ticker}"] = np.log(result[f"close_{ticker}"]).diff()
+        result[f"normalized_{ticker}"] = result[f"close_{ticker}"] / result[f"close_{ticker}"].iloc[0]
+    return result
 
 
 def run(config: RunConfig, provider: PriceProvider, cache_dir: Path, output: Path, offline: bool = False) -> Path:
@@ -144,6 +162,26 @@ def run(config: RunConfig, provider: PriceProvider, cache_dir: Path, output: Pat
     aligned_path = output / "aligned_observations.csv"; aligned.to_csv(aligned_path, index=False, date_format="%Y-%m-%d")
     plots = write_plots(aligned, config, output)
     artifacts = [aligned_path, output / "lagged_correlations.csv", output / "event_responses.csv", *plots]
+    quarter_rows = []
+    quarter_root = output / "quarters"; quarter_root.mkdir()
+    first_quarter = pd.Period(config.start, freq="Q")
+    last_quarter = pd.Period(config.end, freq="Q")
+    for quarter in pd.period_range(first_quarter, last_quarter, freq="Q"):
+        quarterly = quarter_frame(aligned, quarter, config.ticker_a, config.ticker_b)
+        if quarterly.empty:
+            quarter_rows.append({"quarter": str(quarter), "common_observations": 0, "paired_returns": 0, f"qualifying_events_{config.ticker_a}": 0, f"qualifying_events_{config.ticker_b}": 0, "status": "no common observations"})
+            continue
+        quarter_dir = quarter_root / str(quarter); quarter_dir.mkdir()
+        quarter_aligned = quarter_dir / "aligned_observations.csv"
+        quarterly.to_csv(quarter_aligned, index=False, date_format="%Y-%m-%d")
+        quarter_plots = write_plots(quarterly, config, quarter_dir, str(quarter))
+        quarter_events = pd.read_csv(quarter_dir / "event_responses.csv")
+        event_counts = quarter_events.groupby("source").event_date.nunique().to_dict() if not quarter_events.empty else {}
+        quarter_rows.append({"quarter": str(quarter), "common_observations": len(quarterly), "paired_returns": quarterly[[f"log_return_{config.ticker_a}", f"log_return_{config.ticker_b}"]].dropna().shape[0], f"qualifying_events_{config.ticker_a}": event_counts.get(int(config.ticker_a), event_counts.get(config.ticker_a, 0)), f"qualifying_events_{config.ticker_b}": event_counts.get(int(config.ticker_b), event_counts.get(config.ticker_b, 0)), "status": "generated"})
+        artifacts.extend([quarter_aligned, quarter_dir / "lagged_correlations.csv", quarter_dir / "event_responses.csv", *quarter_plots])
+    quarterly_summary = output / "quarterly_summary.csv"
+    pd.DataFrame(quarter_rows).to_csv(quarterly_summary, index=False)
+    artifacts.append(quarterly_summary)
     manifest = {
         "label": LABEL,
         "scope": "manual exploratory pair observation only",
@@ -152,7 +190,8 @@ def run(config: RunConfig, provider: PriceProvider, cache_dir: Path, output: Pat
         "raw_inputs": {config.ticker_a: provenance_a, config.ticker_b: provenance_b},
         "common_rows": len(aligned), "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "runtime": {"python": platform.python_version(), "pandas": pd.__version__, "numpy": np.__version__, "matplotlib": matplotlib.__version__},
-        "artifacts": {p.name: _sha256(p) for p in artifacts},
+        "quarter_slicing": {"frequency": "fixed calendar quarter", "transforms_recomputed_within_quarter": True, "parameters_reestimated": False, "summary": quarterly_summary.name},
+        "artifacts": {p.relative_to(output).as_posix(): _sha256(p) for p in artifacts},
         "prohibited_uses": ["automated pair selection", "lead-lag classification", "trading signals", "parameter optimization", "backtesting", "formal inference"],
     }
     path = output / "manifest.json"; path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8")
