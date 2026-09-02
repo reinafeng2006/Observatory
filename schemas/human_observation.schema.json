@@ -26,6 +26,38 @@
     "created_at": {"type": "string", "format": "date-time"},
     "updated_at": {"type": "string", "format": "date-time"},
     "author": {"type": "string"},
+    "raw_note": {"type": "string"},
+    "derived_analysis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["analysis_version", "analyzed_at", "extracted_claims", "machine_derived_retrieval_metadata", "analysis_method", "limitations"],
+      "properties": {
+        "analysis_version": {"type": "integer", "minimum": 1},
+        "analyzed_at": {"type": "string", "format": "date-time"},
+        "extracted_claims": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["extracted_statement", "claim_type", "claim_type_label", "evidence_status", "supporting_measurements", "semantic_or_deterministic_basis", "limitation", "interpretation_boundary", "unresolved_evidence"],
+            "properties": {
+              "extracted_statement": {"type": "string"},
+              "claim_type": {"enum": ["verifiable_observational", "interpretation_hypothesis", "external_context", "question_evidence_need"]},
+              "claim_type_label": {"type": "string"},
+              "evidence_status": {"enum": ["supported by bound observations", "partially supported", "not established by current evidence", "contradicted by bound observations", "not currently testable from available Observatory context"]},
+              "supporting_measurements": {"type": "array", "items": {"type": "object"}},
+              "semantic_or_deterministic_basis": {"type": "string"},
+              "limitation": {"type": "string"},
+              "interpretation_boundary": {"type": "string"},
+              "unresolved_evidence": {"type": "array", "items": {"type": "string"}}
+            }
+          }
+        },
+        "machine_derived_retrieval_metadata": {"type": "array", "items": {"enum": ["possible_synchrony", "possible_timing_asymmetry", "possible_divergence", "event_context_needed"]}, "uniqueItems": true},
+        "analysis_method": {"type": "string"},
+        "limitations": {"type": "string"}
+      }
+    },
     "provenance": {
       "type": "object",
       "additionalProperties": false,

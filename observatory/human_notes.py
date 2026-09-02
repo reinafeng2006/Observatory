@@ -22,6 +22,7 @@ REQUIRED_FIELDS = {
     "alternative_explanation", "evidence_needed", "confidence", "created_at", "updated_at", "author",
     "provenance", "prohibited_uses",
 }
+NEW_NOTE_FIELDS = {"raw_note", "derived_analysis"}
 
 
 def sha256(path: Path) -> str:
@@ -46,9 +47,11 @@ def _parse_timestamp(value: object, field: str) -> None:
 
 
 def validate_record(record: dict) -> None:
-    if set(record) != REQUIRED_FIELDS:
-        missing, extra = REQUIRED_FIELDS - set(record), set(record) - REQUIRED_FIELDS
+    if not REQUIRED_FIELDS.issubset(record) or not set(record).issubset(REQUIRED_FIELDS | NEW_NOTE_FIELDS):
+        missing, extra = REQUIRED_FIELDS - set(record), set(record) - (REQUIRED_FIELDS | NEW_NOTE_FIELDS)
         raise ValueError(f"Human observation schema fields mismatch; missing={sorted(missing)}, extra={sorted(extra)}")
+    if bool("raw_note" in record) != bool("derived_analysis" in record):
+        raise ValueError("raw_note and derived_analysis must be present together")
     if not isinstance(record["observation_id"], str) or not record["observation_id"]:
         raise ValueError("observation_id is required")
     if not isinstance(record["revision"], int) or record["revision"] < 1:
@@ -89,6 +92,14 @@ def validate_record(record: dict) -> None:
         raise ValueError("provenance is incomplete")
     if record["prohibited_uses"] != PROHIBITED_USES:
         raise ValueError("prohibited_uses must use the frozen exploratory restrictions")
+    if "raw_note" in record:
+        if not isinstance(record["raw_note"], str): raise ValueError("raw_note must be a string")
+        analysis = record["derived_analysis"]
+        if not isinstance(analysis, dict) or not {"analysis_version", "analyzed_at", "extracted_claims", "machine_derived_retrieval_metadata", "analysis_method", "limitations"}.issubset(analysis):
+            raise ValueError("derived_analysis is incomplete")
+        if not isinstance(analysis["analysis_version"], int) or analysis["analysis_version"] < 1: raise ValueError("analysis_version must be positive")
+        _parse_timestamp(analysis["analyzed_at"], "analyzed_at")
+        if not isinstance(analysis["extracted_claims"], list): raise ValueError("extracted_claims must be an array")
 
 
 class HumanObservationStore:
@@ -123,7 +134,7 @@ class HumanObservationStore:
         if chart_type is not None: records = [r for r in records if r["chart_type"] == chart_type]
         return sorted(records, key=lambda r: (r["created_at"], r["observation_id"]))
 
-    def save(self, draft: dict, provenance: dict) -> dict:
+    def save(self, draft: dict, provenance: dict, derived_analysis: dict | None = None) -> dict:
         with self._lock:
             records = self._all()
             existing = None
@@ -134,6 +145,15 @@ class HumanObservationStore:
                     raise ValueError("Cannot edit an unknown observation_id")
                 existing = max(matches, key=lambda r: r["revision"])
             now = _utcnow(); pair = draft["pair_id"].split("/")
+            raw_note = draft.get("raw_note", draft.get("observation_text", ""))
+            if not isinstance(raw_note, str): raise ValueError("raw_note must be a string")
+            def legacy(field: str, default: object) -> object:
+                return draft[field] if field in draft else existing[field] if existing else default
+            counter = legacy("counter_hypothesis", "")
+            alternative = draft.get("alternative_explanation", counter) if "counter_hypothesis" in draft else legacy("alternative_explanation", "")
+            analysis = deepcopy(derived_analysis or {"extracted_claims": [], "machine_derived_retrieval_metadata": [], "analysis_method": "not analyzed", "limitations": "No derived analysis was supplied."})
+            previous_analysis = existing.get("derived_analysis", {}).get("analysis_version", 0) if existing else 0
+            analysis["analysis_version"] = previous_analysis + 1; analysis["analyzed_at"] = now
             record = {
                 "observation_id": requested_id or str(uuid.uuid4()),
                 "revision": existing["revision"] + 1 if existing else 1,
@@ -141,12 +161,13 @@ class HumanObservationStore:
                 "pair_id": draft["pair_id"], "company_a": pair[0], "company_b": pair[1],
                 "year": int(draft["quarter"][:4]), "quarter": draft["quarter"],
                 "target_scope": draft["target_scope"], "chart_type": draft.get("chart_type"),
-                "observation_text": draft.get("observation_text", ""), "tags": draft.get("tags", []),
-                "hypothesis": draft.get("hypothesis", ""), "counter_hypothesis": draft.get("counter_hypothesis", ""),
-                "alternative_explanation": draft.get("counter_hypothesis", ""), "evidence_needed": draft.get("evidence_needed", ""),
-                "confidence": draft.get("confidence"), "created_at": existing["created_at"] if existing else now,
-                "updated_at": now, "author": draft.get("author", ""), "provenance": deepcopy(provenance),
+                "observation_text": legacy("observation_text", ""), "tags": legacy("tags", []),
+                "hypothesis": legacy("hypothesis", ""), "counter_hypothesis": counter,
+                "alternative_explanation": alternative, "evidence_needed": legacy("evidence_needed", ""),
+                "confidence": legacy("confidence", None), "created_at": existing["created_at"] if existing else now,
+                "updated_at": now, "author": legacy("author", ""), "provenance": deepcopy(provenance),
                 "prohibited_uses": PROHIBITED_USES.copy(),
+                "raw_note": raw_note, "derived_analysis": analysis,
             }
             if existing and any(record[field] != existing[field] for field in ("pair_id", "quarter", "target_scope", "chart_type")):
                 raise ValueError("An edit cannot change its original target")

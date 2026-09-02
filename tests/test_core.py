@@ -123,10 +123,10 @@ def test_annual_reports_use_existing_images_and_valid_relative_paths(tmp_path):
     assert "2026 YTD — INCOMPLETE CALENDAR YEAR" in ytd
     assert "2026Q4" not in ytd
     assert "Machine Observation" in ytd
-    assert "Human Observation" in ytd
-    assert "Human Hypothesis" in ytd
-    assert "Alternative Explanation / Counter-Hypothesis" in ytd
-    assert "observation_text" in ytd and "counter_hypothesis" in ytd and "evidence_needed" in ytd
+    assert "Your Note" in ytd
+    assert ytd.count('name="raw_note"') == 18
+    assert 'name="hypothesis"' not in ytd and 'name="confidence"' not in ytd and 'name="tags"' not in ytd
+    assert "MACHINE READING OF YOUR NOTE" in ytd
     assert "Export notes JSON" not in ytd and "localStorage" not in ytd
     assert "No sourced dated events were supplied" in ytd
     invariant_headings = ["Question", "Definition", "Inputs", "Calculation", "Rule", "Interpretation", "Assumptions", "Failure modes", "Does NOT imply", "Related chart", "Research relevance"]
@@ -163,7 +163,7 @@ def test_local_server_persists_reloads_edits_multiple_notes_and_provenance(tmp_p
     immutable_paths = [path for path in output.rglob("*") if path.is_file() and (path.suffix in {".csv", ".png"} or path.name == "machine_measurements.json")]
     before = {path.relative_to(output).as_posix(): path.read_bytes() for path in immutable_paths}
     notes = tmp_path / "human_notes" / "observations.jsonl"
-    server = create_server(output, notes, port=0)
+    server = create_server(output, notes, port=0, author="Researcher")
     thread = threading.Thread(target=server.serve_forever, daemon=True); thread.start()
     base = f"http://127.0.0.1:{server.server_port}"
 
@@ -172,12 +172,23 @@ def test_local_server_persists_reloads_edits_multiple_notes_and_provenance(tmp_p
         with urlopen(request) as response:
             return json.loads(response.read())["record"]
 
-    draft = {"pair_id": "000001/000002", "quarter": "2024Q1", "target_scope": "chart", "chart_type": "return_overlay", "observation_text": "First observation", "tags": ["synchronous"], "hypothesis": "Possible shared driver", "counter_hypothesis": "Coincidental market move", "evidence_needed": "Dated market context", "confidence": .4, "author": "Researcher"}
+    raw_note = "  They moved in the same direction most of the quarter.\nA always leads B. Policy news caused it. What evidence would verify this?  "
+    draft = {"pair_id": "000001/000002", "quarter": "2024Q1", "target_scope": "chart", "chart_type": "return_overlay", "raw_note": raw_note}
     try:
-        first = post(draft); second = post({**draft, "observation_text": "Second observation", "tags": ["unclear"]})
+        first = post(draft); second = post({**draft, "raw_note": "Second free-form note"})
         validate_record(first); validate_record(second)
-        with pytest.raises(ValueError, match="confidence"):
-            validate_record({**first, "confidence": 2})
+        assert first["raw_note"] == raw_note
+        assert first["author"] == "Researcher"
+        assert first["derived_analysis"]["analysis_version"] == 1
+        assert not {"pair_score", "trading_signal", "strategy_input", "model_label"}.intersection(first["derived_analysis"])
+        lead_claim = next(claim for claim in first["derived_analysis"]["extracted_claims"] if "always leads" in claim["extracted_statement"])
+        assert lead_claim["claim_type"] == "interpretation_hypothesis"
+        assert lead_claim["evidence_status"] == "not established by current evidence"
+        assert "predictive or causal lead-lag is not established" in lead_claim["interpretation_boundary"]
+        assert lead_claim["supporting_measurements"][0]["artifact_path"] == "machine_measurements.json"
+        assert lead_claim["supporting_measurements"][0]["period"] == "2024Q1"
+        external = next(claim for claim in first["derived_analysis"]["extracted_claims"] if "Policy news" in claim["extracted_statement"])
+        assert external["claim_type"] == "external_context" and external["evidence_status"] == "not currently testable from available Observatory context"
         assert first["observation_id"] != second["observation_id"]
         assert first["provenance"]["chart_artifacts"][0]["chart_type"] == "return_overlay"
         assert first["provenance"]["chart_artifacts"][0]["sha256"]
@@ -185,15 +196,19 @@ def test_local_server_persists_reloads_edits_multiple_notes_and_provenance(tmp_p
         assert first["provenance"]["run_identity"]["manifest_sha256"]
         assert first["provenance"]["cache_identity"]["000001"]["sha256"]
         assert first["provenance"]["observatory_git_commit"]
-        edited = post({**draft, "observation_id": first["observation_id"], "observation_text": "Edited observation"})
+        edited_raw = "Edited note remains verbatim.\nA may follow B."
+        edited = post({**draft, "observation_id": first["observation_id"], "raw_note": edited_raw})
         assert edited["revision"] == 2 and edited["created_at"] == first["created_at"]
         assert edited["updated_at"] >= first["updated_at"]
+        assert edited["raw_note"] == edited_raw and edited["derived_analysis"]["analysis_version"] == 2
+        persisted_lines = [json.loads(line) for line in notes.read_text(encoding="utf-8").splitlines()]
+        assert persisted_lines[0]["raw_note"] == raw_note
         query = urlencode({"pair_id": "000001/000002", "quarter": "2024Q1", "target_scope": "chart", "chart_type": "return_overlay"})
         with urlopen(base + "/api/observations?" + query) as response:
             loaded = json.loads(response.read())["records"]
         assert len(loaded) == 2
-        assert next(item for item in loaded if item["observation_id"] == first["observation_id"])["observation_text"] == "Edited observation"
-        quarter_note = post({**draft, "target_scope": "quarter", "chart_type": None, "observation_text": "Quarter-level note"})
+        assert next(item for item in loaded if item["observation_id"] == first["observation_id"])["raw_note"] == edited_raw
+        quarter_note = post({**draft, "target_scope": "quarter", "chart_type": None, "raw_note": "Quarter-level note"})
         assert quarter_note["chart_type"] is None and len(quarter_note["provenance"]["chart_artifacts"]) == 5
         assert len(notes.read_text(encoding="utf-8").splitlines()) == 4
         assert len(HumanObservationStore(notes).latest(pair_id="000001/000002")) == 3
@@ -203,6 +218,24 @@ def test_local_server_persists_reloads_edits_multiple_notes_and_provenance(tmp_p
         server.shutdown(); server.server_close(); thread.join(timeout=5)
     after = {path.relative_to(output).as_posix(): path.read_bytes() for path in immutable_paths}
     assert after == before
+
+
+def test_legacy_structured_note_is_losslessly_preserved_when_new_raw_revision_is_appended(tmp_path):
+    now = "2024-04-01T00:00:00+00:00"
+    provenance = {"chart_artifacts": [{"chart_type": "return_overlay", "path": "quarters/2024Q1/01_return_overlay.png", "sha256": "a" * 64}], "machine_measurement": {"path": "machine_measurements.json", "sha256": "b" * 64, "period": "2024Q1", "format_version": "1"}, "report_artifact": {"path": "reports/2024_pair_observation.html", "sha256": "c" * 64}, "report_version": "legacy", "run_identity": {"manifest_path": "manifest.json", "manifest_sha256": "d" * 64, "generated_at_utc": now, "config": {}}, "cache_identity": {}, "provider": {}, "observatory_version": "0.4.0", "observatory_git_commit": "e" * 40}
+    legacy = {"observation_id": "legacy-1", "revision": 3, "record_type": "exploratory_human_note", "pair_id": "000001/000002", "company_a": "000001", "company_b": "000002", "year": 2024, "quarter": "2024Q1", "target_scope": "chart", "chart_type": "return_overlay", "observation_text": "  exact observation\nline two  ", "tags": ["unclear", "synchronous"], "hypothesis": "exact hypothesis", "counter_hypothesis": "exact counter", "alternative_explanation": "exact counter", "evidence_needed": "exact evidence", "confidence": .73, "created_at": now, "updated_at": now, "author": "Exact Author", "provenance": provenance, "prohibited_uses": ["training labels", "formal classifications", "pair-selection inputs", "prediction targets", "trading signals", "confirmatory evidence"]}
+    validate_record(legacy)
+    path = tmp_path / "legacy.jsonl"; original_line = json.dumps(legacy, ensure_ascii=False, separators=(",", ":"))
+    path.write_text(original_line + "\n", encoding="utf-8")
+    before = path.read_bytes(); loaded = HumanObservationStore(path).latest()[0]
+    assert loaded == legacy
+    analysis = {"extracted_claims": [], "machine_derived_retrieval_metadata": [], "analysis_method": "deterministic compatibility test", "limitations": "test"}
+    revised = HumanObservationStore(path).save({"observation_id": "legacy-1", "pair_id": "000001/000002", "quarter": "2024Q1", "target_scope": "chart", "chart_type": "return_overlay", "raw_note": "new additional raw representation"}, provenance, analysis)
+    assert path.read_bytes().startswith(before)
+    for field in ("observation_text", "tags", "hypothesis", "counter_hypothesis", "alternative_explanation", "evidence_needed", "confidence", "created_at", "author"):
+        assert revised[field] == legacy[field]
+    assert revised["raw_note"] == "new additional raw representation" and revised["revision"] == 4
+    assert json.loads(path.read_text(encoding="utf-8").splitlines()[0]) == legacy
 
 
 def test_context_requires_provenance_and_is_copied(tmp_path):

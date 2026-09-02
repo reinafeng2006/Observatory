@@ -79,16 +79,17 @@ intermediate values remain quarter-specific. Optional tags are selected only by
 the researcher.
 
 When an output bundle is served by the loopback-only Observatory application,
-the report forms save structured records to an append-only JSONL file outside
-the generated output bundle. Static HTML remains readable without the server,
-but clearly marks drafts as unsaved and disables persistence. Records support
-chart-quarter and quarter-level targets, multiple notes per target, and revision
-edits that retain the original creation timestamp.
+the report's single-box **Your Note** forms preserve verbatim `raw_note` records
+in an append-only JSONL file outside the generated output bundle. Static HTML
+remains readable without the server, but clearly marks drafts as unsaved and
+disables persistence. Records support chart-quarter and quarter-level targets,
+multiple notes per target, and revision edits that retain the original creation
+timestamp.
 
 Start the local application with an explicit output and separate notes path:
 
 ```powershell
-observatory-serve --output outputs/manual_inspection/600031_000425 --notes human_notes/600031_000425/observations.jsonl
+observatory-serve --output outputs/manual_inspection/600031_000425 --notes human_notes/600031_000425/observations.jsonl --author "Researcher name"
 ```
 
 Every persisted revision binds chart hashes, machine-measurement hash/version,
@@ -97,6 +98,12 @@ and Observatory version/Git commit. Human notes never modify generated artifacts
 and never become training labels, formal classifications, pair-selection inputs,
 or trading signals automatically. The record contract is documented in
 `schemas/human_observation.schema.json`.
+
+A collapsed deterministic Machine Reading card decomposes a note into
+observable/testable content, interpretation/hypothesis, external claims needing
+evidence, and questions/evidence needs. It may link bound descriptive evidence
+and flag wording strength, but it never rewrites the raw note or establishes a
+hypothesis, causal lead-lag, predictability, pair quality, or strategy result.
 
 `machine_measurements.json` contains fixed formula definitions, input artifact
 paths, sample sizes, per-quarter values, full lag profiles, event-aligned
