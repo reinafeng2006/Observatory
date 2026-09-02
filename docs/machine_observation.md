@@ -5,26 +5,27 @@ interpretation. `machine_measurements.json` records formula definitions, input
 artifact paths, observation counts, exact values, and deterministic rule
 results.
 
-Every report chart uses the same traceability card, in this fixed order:
+Each chart type has one shared, collapsible traceability card, in this fixed
+order:
 
 1. Question
 2. Definition
 3. Inputs
 4. Calculation
-5. Intermediate values
-6. Rule
-7. Machine statement
-8. Interpretation
-9. Assumptions
-10. Failure modes
-11. Does NOT imply
-12. Related chart
-13. Research relevance
+5. Rule
+6. Interpretation
+7. Assumptions
+8. Failure modes
+9. Does NOT imply
+10. Related chart
+11. Research relevance
 
-The first six fields establish what was measured and how. The machine statement
-contains only a direct numeric result or an evaluation of an explicitly stated
-deterministic rule. Interpretation is fixed educational context, not a generated
-reading of the chart. Prohibited conclusions remain explicit in every card.
+The report's default view presents realized metrics in a metric-by-quarter
+comparison table. Sample sizes, missingness, peaks, estimates, event counts, and
+deterministic rule results remain quarter-specific. Complete lag and event
+intermediate values and provenance paths are available in per-quarter disclosure
+controls. Interpretation is fixed educational context, not a generated reading
+of the chart. Prohibited conclusions remain explicit in every shared card.
 The reusable text contracts are also serialized under `observation_contracts`
 in `machine_measurements.json`, alongside the exact pair-quarter measurements.
 

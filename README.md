@@ -58,21 +58,25 @@ descriptive inventory.
 ## Annual visual-observation reports
 
 After the quarterly artifacts are written, Observatory creates `reports/` with
-an index and one wide HTML comparison matrix for each complete calendar year.
+an index and one wide HTML comparison report for each complete calendar year.
 An incomplete final year is explicitly named and labelled `YTD — INCOMPLETE
 CALENDAR YEAR`, and includes only quarters present in the requested sample.
-Columns are quarters and the five fixed plot types are rows. The HTML links
-directly to the existing full-resolution quarterly PNGs; it does not regenerate
-images or recompute statistics. Empty researcher-note prompts are provided for
-manual observation only.
+Each chart type has one shared compact context header followed by a Q1–Q4 image
+grid, a metric-by-quarter Machine Observation comparison table, quarter-specific
+human note forms, and collapsed shared learning material. The HTML links directly
+to the existing full-resolution quarterly PNGs; it does not regenerate images or
+recompute statistics. Empty researcher-note prompts are provided for manual
+observation only.
 
 ## Human and machine observation layers
 
 Annual reports visibly separate four layers: deterministic Machine
 Measurement, Human Observation, Human Hypothesis, and Alternative Explanation /
-Counter-Hypothesis. Chart explanations and traditional visual prompts guide
-attention without pre-filling any field or forcing a category. Optional tags
-are selected only by the researcher.
+Counter-Hypothesis. Shared chart explanations and traditional visual prompts
+guide attention without pre-filling any field or forcing a category. Invariant
+machine methodology is rendered once per chart type; realized measurements and
+intermediate values remain quarter-specific. Optional tags are selected only by
+the researcher.
 
 Human notes are stored as structured browser-local records and can be exported
 or imported as JSON. Each record contains pair, period, chart type, observation,

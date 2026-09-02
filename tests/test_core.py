@@ -122,16 +122,27 @@ def test_annual_reports_use_existing_images_and_valid_relative_paths(tmp_path):
     assert "Alternative Explanation / Counter-Hypothesis" in ytd
     assert "observation_text" in ytd and "counter_hypothesis" in ytd and "evidence_needed" in ytd
     assert "No sourced dated events were supplied" in ytd
-    headings = ["Question", "Definition", "Inputs", "Calculation", "Intermediate values", "Rule", "Machine statement", "Interpretation", "Assumptions", "Failure modes", "Does NOT imply", "Related chart", "Research relevance"]
-    for heading in headings:
-        assert f"<h5>{heading}</h5>" in ytd
-    positions = [ytd.index(f"<h5>{heading}</h5>") for heading in headings]
-    assert positions == sorted(positions)
+    invariant_headings = ["Question", "Definition", "Inputs", "Calculation", "Rule", "Interpretation", "Assumptions", "Failure modes", "Does NOT imply", "Related chart", "Research relevance"]
+    assert ytd.count('class="chart-context"') == 5
+    assert ytd.count("Learn this chart") == 5
+    assert ytd.count("Learn machine methodology and interpretation boundaries") == 5
+    assert ytd.count('class="machine-comparison"') == 5
+    assert ytd.count('class="human-form"') == 15
+    assert ytd.count('class="quarter-detail"') == 15
+    for heading in invariant_headings:
+        assert ytd.count(f"<h5>{heading}</h5>") == 5
+    first_block = ytd[ytd.index('id="return_overlay"'):ytd.index('id="normalized_price"')]
+    disclosure = first_block.index("Learn this chart")
+    assert first_block.index('class="chart-context"') < first_block.index('class="plot-grid"') < first_block.index('class="machine-comparison"') < first_block.index('class="human-section"') < disclosure
+    assert "What this chart shows" not in first_block[:disclosure]
     assert ytd.index("Daily log-return overlay") < ytd.index("Quarterly normalized-price path") < ytd.index("Contemporaneous return scatter") < ytd.index("Lagged cross-correlation") < ytd.index("Event-centered response")
     machine_before = (output / "machine_measurements.json").read_bytes()
     for report in reports:
         content = report.read_text(encoding="utf-8")
         for link in re.findall(r'(?:href|src)="([^"]+)"', content):
+            if link.startswith("#"):
+                assert f'id="{link[1:]}"' in content, f"broken anchor in {report.name}: {link}"
+                continue
             assert (report.parent / link).resolve().exists(), f"broken link in {report.name}: {link}"
     assert (output / "machine_measurements.json").read_bytes() == machine_before
 
