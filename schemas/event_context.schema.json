@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Sourced Event Context",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["date", "quarter", "event_type", "scope", "description", "published_at", "retrieved_at", "provider", "source", "source_url", "provenance_id"],
+  "properties": {
+    "date": {"type": "string", "format": "date"},
+    "quarter": {"type": "string", "pattern": "^[0-9]{4}Q[1-4]$"},
+    "event_type": {"type": "string", "minLength": 1},
+    "scope": {"type": "string", "minLength": 1},
+    "description": {"type": "string", "minLength": 1},
+    "published_at": {"type": "string", "format": "date-time"},
+    "retrieved_at": {"type": "string", "format": "date-time"},
+    "provider": {"type": "string", "minLength": 1},
+    "source": {"type": "string", "minLength": 1},
+    "source_url": {"type": "string", "format": "uri"},
+    "provenance_id": {"type": "string", "minLength": 1}
+  }
+}

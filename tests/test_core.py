@@ -117,25 +117,34 @@ def test_annual_reports_use_existing_images_and_valid_relative_paths(tmp_path):
     assert "Human Observation" in ytd
     assert "Human Hypothesis" in ytd
     assert "Alternative Explanation / Counter-Hypothesis" in ytd
-    assert "observation_text" in ytd and "alternative_explanation" in ytd and "timestamp" in ytd
+    assert "observation_text" in ytd and "counter_hypothesis" in ytd and "evidence_needed" in ytd
     assert "No sourced dated events were supplied" in ytd
     assert ytd.index("Daily log-return overlay") < ytd.index("Quarterly normalized-price path") < ytd.index("Contemporaneous return scatter") < ytd.index("Lagged cross-correlation") < ytd.index("Event-centered response")
+    machine_before = (output / "machine_measurements.json").read_bytes()
     for report in reports:
         content = report.read_text(encoding="utf-8")
         for link in re.findall(r'(?:href|src)="([^"]+)"', content):
             assert (report.parent / link).resolve().exists(), f"broken link in {report.name}: {link}"
+    assert (output / "machine_measurements.json").read_bytes() == machine_before
 
 
 def test_context_requires_provenance_and_is_copied(tmp_path):
     output = tmp_path / "output"; output.mkdir()
     valid = tmp_path / "events.csv"
-    pd.DataFrame([{"date": "2024-01-10", "quarter": "2024Q1", "scope": "industry", "description": "Sourced event", "source": "Publisher", "source_url": "https://example.test/event"}]).to_csv(valid, index=False)
+    pd.DataFrame([{"date": "2024-01-10", "quarter": "2024Q1", "event_type": "industry_policy", "scope": "industry", "description": "Sourced event", "published_at": "2024-01-10T08:00:00Z", "retrieved_at": "2024-02-01T00:00:00Z", "provider": "Publisher API", "source": "Publisher", "source_url": "https://example.test/event", "provenance_id": "event-1"}]).to_csv(valid, index=False)
     artifacts = prepare_context(output, None, valid)
     assert artifacts == [output / "context" / "event_context.csv"]
     invalid = tmp_path / "invalid.csv"
-    pd.DataFrame([{"date": "2024-01-10", "quarter": "2024Q1", "scope": "industry", "description": "Unsourced", "source": "", "source_url": ""}]).to_csv(invalid, index=False)
-    with pytest.raises(ValueError, match="source and source_url"):
+    pd.DataFrame([{"date": "2024-01-10", "quarter": "2024Q1", "event_type": "industry_policy", "scope": "industry", "description": "Unsourced", "published_at": "2024-01-10T08:00:00Z", "retrieved_at": "2024-02-01T00:00:00Z", "provider": "", "source": "", "source_url": "", "provenance_id": ""}]).to_csv(invalid, index=False)
+    with pytest.raises(ValueError, match="provenance_id"):
         prepare_context(tmp_path / "other", None, invalid)
+
+
+def test_company_context_rejects_information_available_after_observation_period(tmp_path):
+    company = tmp_path / "company.csv"
+    pd.DataFrame([{"quarter": "2024Q1", "ticker": "600031", "group": "operating_fundamental_state", "attribute": "revenue", "value": 100, "unit": "CNY", "effective_date": "2023-12-31", "available_at": "2024-04-30T00:00:00Z", "retrieved_at": "2024-05-01T00:00:00Z", "provider": "Filing provider", "source": "Annual report", "source_url": "https://example.test/filing", "provenance_id": "filing-1"}]).to_csv(company, index=False)
+    with pytest.raises(ValueError, match="not publicly available"):
+        prepare_context(tmp_path / "output", company, None)
 
 
 @pytest.mark.parametrize("ticker", ["1", "ABCDEF", "0000011"])

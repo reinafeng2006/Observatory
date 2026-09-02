@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Deterministic Pair-Quarter Machine Observation",
+  "type": "object",
+  "required": ["pair", "period", "inputs", "sample_sizes", "return_measures", "linear_response_b_on_a", "normalized_end", "lag_profile", "lag0", "positive_lag_peak", "negative_lag_peak", "deterministic_statements", "event_aligned"],
+  "properties": {
+    "pair": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "string"}},
+    "period": {"type": "string", "pattern": "^[0-9]{4}Q[1-4]$"},
+    "inputs": {"type": "object"},
+    "sample_sizes": {"type": "object"},
+    "return_measures": {"type": "object"},
+    "linear_response_b_on_a": {"type": "object"},
+    "normalized_end": {"type": "object"},
+    "lag_profile": {"type": "array", "minItems": 11, "maxItems": 11},
+    "lag0": {"type": ["number", "null"]},
+    "positive_lag_peak": {"type": ["object", "null"]},
+    "negative_lag_peak": {"type": ["object", "null"]},
+    "deterministic_statements": {"type": "array"},
+    "event_aligned": {"type": "array"}
+  }
+}

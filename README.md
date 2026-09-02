@@ -1,13 +1,33 @@
 # Observatory
 
-Observatory is a deliberately small, standalone tool for **exploratory manual
-inspection** of two A-share price series. It fetches daily forward-adjusted
-(`qfq`) prices from a pinned AkShare adapter, aligns common trading dates,
-computes log returns, and writes a reproducible bundle of fixed plots and data.
+Observatory is a reusable, human-in-the-loop **discovery environment** for
+statistical-arbitrage hypothesis discovery. It organizes market behavior, pair
+relationships, company/market context, dated events, deterministic descriptive
+facts, visual comparisons, and human research notes into a reproducible
+workspace. Its governing principle is: **maximize observability, not
+conclusions**.
 
-It does **not** select pairs, classify lead/lag relationships, generate trading
-signals, optimize parameters, backtest strategies, or perform formal inference.
-Every chart is labelled `EXPLORATORY — NOT A TRADING SIGNAL`.
+> Observatory should maximize observability, not conclusions.
+
+Observatory stops at hypothesis discovery. It does **not** backtest, optimize,
+rank pair profitability, generate signals, validate alpha, infer causality or
+predictability, label pairs good/bad, select strategies, or silently promote
+exploratory notes into labels or confirmatory evidence. Hypothesis packages may
+only be exported as inputs to a separate formal research pipeline. Every chart
+is labelled `EXPLORATORY — NOT A TRADING SIGNAL`.
+
+The boundaries are intentionally distinct:
+
+> Machine Measurement != Human Observation
+>
+> Human Observation != Hypothesis
+>
+> Hypothesis != Validated Relationship
+>
+> Validated Relationship != Trading Opportunity
+
+See [Product Charter](docs/product_charter.md) and
+[Architecture](docs/architecture.md) for the frozen v1 contract.
 
 ## Install and run
 
@@ -68,10 +88,13 @@ not LLM visual interpretations or claims about causality, predictability,
 mean-reversion, pair quality, or trading opportunity.
 
 Optional sourced context can be supplied with `--company-context` and
-`--event-context`. Company CSV rows require `quarter,ticker,attribute,value,
-as_of_date,source,source_url`; event rows require `date,quarter,scope,
-description,source,source_url`. Every row must contain provenance. If no context
-is supplied, reports say so explicitly and invent nothing.
+`--event-context`. Company rows require quarter/ticker/group/attribute/value,
+effective and availability dates, retrieval time, provider, source URL, and a
+provenance ID. Event rows require date/quarter/type/scope/description,
+publication and retrieval times, provider, source URL, and a provenance ID.
+Records unavailable by the observation quarter are rejected. If no context is
+supplied, reports say so explicitly and invent nothing. See the schemas and
+[Data Provenance](docs/data_provenance.md) for exact contracts.
 
 Use `--offline` to require an existing cache entry. The event view uses the
 fixed default definition `abs(log return) >= 0.03` and a fixed ±5 common-session
