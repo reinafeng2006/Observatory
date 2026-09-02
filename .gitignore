@@ -4,5 +4,6 @@ __pycache__/
 .venv/
 cache/
 runs/
+outputs/
 dist/
 *.egg-info/

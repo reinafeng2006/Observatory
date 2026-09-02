@@ -1,11 +1,13 @@
 from datetime import date
 import json
+import re
 
 import numpy as np
 import pandas as pd
 import pytest
 
 from observatory.core import RunConfig, align_prices, event_responses, lagged_correlations, quarter_frame, run
+from observatory.reports import generate_reports
 
 
 class FrozenFixtureProvider:
@@ -41,6 +43,8 @@ def test_reproducible_bundle_and_immutable_cache(tmp_path):
     assert (tmp_path / "run1" / "05_event_centered_response.png").exists()
     assert (tmp_path / "run1" / "quarters" / "2024Q1" / "05_event_centered_response.png").exists()
     assert (tmp_path / "run1" / "quarterly_summary.csv").exists()
+    assert (tmp_path / "run1" / "reports" / "index.html").exists()
+    assert (tmp_path / "run1" / "reports" / "2024_YTD_pair_observation.html").exists()
     manifest = json.loads(first.read_text(encoding="utf-8"))
     semantics = manifest["quarter_slicing"]
     assert semantics["returns"] == "computed once on full aligned series before slicing"
@@ -74,6 +78,36 @@ def test_quarter_event_membership_uses_full_cross_boundary_window():
     assert responses.event_date.iloc[0] == pd.Timestamp("2024-04-01")
     assert set(responses.offset) == set(range(-5, 6))
     assert responses.loc[responses.offset == -5, "response_cumulative_log_return"].notna().all()
+
+
+def test_annual_reports_use_existing_images_and_valid_relative_paths(tmp_path):
+    output = tmp_path / "output"
+    output.mkdir(parents=True)
+    rows = []
+    for year in range(2023, 2027):
+        final_quarter = 3 if year == 2026 else 4
+        for number in range(1, final_quarter + 1):
+            quarter = f"{year}Q{number}"
+            quarter_dir = output / "quarters" / quarter
+            quarter_dir.mkdir(parents=True)
+            pd.DataFrame({"lag": range(-5, 6), "correlation": [0.1] * 11, "sample_size": [50] * 11}).to_csv(quarter_dir / "lagged_correlations.csv", index=False)
+            for filename in ("01_return_overlay.png", "02_normalized_price.png", "03_return_scatter.png", "04_lagged_cross_correlation.png", "05_event_centered_response.png"):
+                (quarter_dir / filename).write_bytes(b"existing-full-resolution-image")
+            rows.append({"quarter": quarter, "common_observations": 60, "paired_returns": 60, "qualifying_events_600031": 2, "qualifying_events_000425": 3, "status": "generated"})
+    pd.DataFrame(rows).to_csv(output / "quarterly_summary.csv", index=False)
+    for filename in ("01_return_overlay.png", "02_normalized_price.png", "03_return_scatter.png", "04_lagged_cross_correlation.png", "05_event_centered_response.png"):
+        (output / filename).write_bytes(b"existing-full-resolution-image")
+    config = RunConfig("600031", "000425", date(2023, 1, 1), date(2026, 8, 31))
+    reports = generate_reports(output, config, "fixture", "1")
+    assert {path.name for path in reports} == {"index.html", "2023_pair_observation.html", "2024_pair_observation.html", "2025_pair_observation.html", "2026_YTD_pair_observation.html"}
+    ytd = (output / "reports" / "2026_YTD_pair_observation.html").read_text(encoding="utf-8")
+    assert "2026 YTD — INCOMPLETE CALENDAR YEAR" in ytd
+    assert "2026Q4" not in ytd
+    assert ytd.index("Daily log-return overlay") < ytd.index("Quarterly normalized-price path") < ytd.index("Contemporaneous return scatter") < ytd.index("Lagged cross-correlation") < ytd.index("Event-centered response")
+    for report in reports:
+        content = report.read_text(encoding="utf-8")
+        for link in re.findall(r'(?:href|src)="([^"]+)"', content):
+            assert (report.parent / link).resolve().exists(), f"broken link in {report.name}: {link}"
 
 
 @pytest.mark.parametrize("ticker", ["1", "ABCDEF", "0000011"])

@@ -201,6 +201,9 @@ def run(config: RunConfig, provider: PriceProvider, cache_dir: Path, output: Pat
     quarterly_summary = output / "quarterly_summary.csv"
     pd.DataFrame(quarter_rows).to_csv(quarterly_summary, index=False)
     artifacts.append(quarterly_summary)
+    from .reports import generate_reports
+    report_artifacts = generate_reports(output, config, provider.provider_id, provider.provider_version)
+    artifacts.extend(report_artifacts)
     manifest = {
         "label": LABEL,
         "scope": "manual exploratory pair observation only",
@@ -219,6 +222,12 @@ def run(config: RunConfig, provider: PriceProvider, cache_dir: Path, output: Pat
             "event_response_windows": "fixed full-series common-session window; may cross quarter boundaries",
             "parameters_reestimated": False,
             "summary": quarterly_summary.name,
+        },
+        "annual_reports": {
+            "role": "visual organization of existing quarterly PNG artifacts only",
+            "statistics_recomputed": False,
+            "source_images": "quarters/YYYYQn/*.png",
+            "index": "reports/index.html",
         },
         "artifacts": {p.relative_to(output).as_posix(): _sha256(p) for p in artifacts},
         "prohibited_uses": ["automated pair selection", "lead-lag classification", "trading signals", "parameter optimization", "backtesting", "formal inference"],

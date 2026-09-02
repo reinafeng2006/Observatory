@@ -35,6 +35,17 @@ common-observation count, relevant descriptive sample size, and qualifying
 complete-window event counts. `quarterly_summary.csv` provides the corresponding
 descriptive inventory.
 
+## Annual visual-observation reports
+
+After the quarterly artifacts are written, Observatory creates `reports/` with
+an index and one wide HTML comparison matrix for each complete calendar year.
+An incomplete final year is explicitly named and labelled `YTD — INCOMPLETE
+CALENDAR YEAR`, and includes only quarters present in the requested sample.
+Columns are quarters and the five fixed plot types are rows. The HTML links
+directly to the existing full-resolution quarterly PNGs; it does not regenerate
+images or recompute statistics. Empty researcher-note prompts are provided for
+manual observation only.
+
 Use `--offline` to require an existing cache entry. The event view uses the
 fixed default definition `abs(log return) >= 0.03` and a fixed ±5 common-session
 window; these can be changed explicitly for visual exploration and are recorded
