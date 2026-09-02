@@ -17,3 +17,8 @@ human ask whether moves were common or stock-specific but never answers
 causally.
 
 Schema: `schemas/company_state.schema.json`. Availability rules are mandatory.
+
+Phase 1 source feasibility and the field-level raw/derived contract are audited
+in `company_state_phase1_source_contract.md`. Implementation is paused pending
+the material provider, cache migration, and observation-basis decisions listed
+there.

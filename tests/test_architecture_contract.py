@@ -6,7 +6,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_frozen_architecture_documents_and_schemas_exist():
-    documents = {"product_charter.md", "architecture.md", "data_provenance.md", "machine_observation.md", "company_state.md", "human_observation.md", "hypothesis_export.md"}
+    documents = {"product_charter.md", "architecture.md", "data_provenance.md", "machine_observation.md", "company_state.md", "company_state_phase1_source_contract.md", "human_observation.md", "hypothesis_export.md"}
     assert documents <= {path.name for path in (ROOT / "docs").glob("*.md")}
     schemas = {"company_state.schema.json", "event_context.schema.json", "machine_observation.schema.json", "human_observation.schema.json", "hypothesis_package.schema.json"}
     assert schemas <= {path.name for path in (ROOT / "schemas").glob("*.json")}
