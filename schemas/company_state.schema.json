@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Point-in-Time Company State Field",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["quarter", "ticker", "group", "attribute", "value", "unit", "effective_date", "available_at", "retrieved_at", "provider", "source", "source_url", "provenance_id"],
+  "properties": {
+    "quarter": {"type": "string", "pattern": "^[0-9]{4}Q[1-4]$"},
+    "ticker": {"type": "string", "pattern": "^[0-9]{6}$"},
+    "group": {"enum": ["high_frequency_market_state", "operating_fundamental_state", "valuation_expectation_state", "industry_market_context"]},
+    "attribute": {"type": "string", "minLength": 1},
+    "value": {},
+    "unit": {"type": "string"},
+    "effective_date": {"type": "string", "format": "date"},
+    "available_at": {"type": "string", "format": "date-time"},
+    "retrieved_at": {"type": "string", "format": "date-time"},
+    "provider": {"type": "string", "minLength": 1},
+    "source": {"type": "string", "minLength": 1},
+    "source_url": {"type": "string", "format": "uri"},
+    "provenance_id": {"type": "string", "minLength": 1},
+    "transformation_rule": {"type": ["string", "null"]}
+  }
+}

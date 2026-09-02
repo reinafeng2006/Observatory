@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://observatory.local/schemas/human_observation.schema.json",
+  "title": "Exploratory Human Research Note",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["observation_id", "revision", "record_type", "pair_id", "company_a", "company_b", "year", "quarter", "target_scope", "chart_type", "observation_text", "tags", "hypothesis", "counter_hypothesis", "alternative_explanation", "evidence_needed", "confidence", "created_at", "updated_at", "author", "provenance", "prohibited_uses"],
+  "properties": {
+    "observation_id": {"type": "string", "minLength": 1},
+    "revision": {"type": "integer", "minimum": 1},
+    "record_type": {"const": "exploratory_human_note"},
+    "pair_id": {"type": "string", "pattern": "^[0-9]{6}/[0-9]{6}$"},
+    "company_a": {"type": "string", "pattern": "^[0-9]{6}$"},
+    "company_b": {"type": "string", "pattern": "^[0-9]{6}$"},
+    "year": {"type": "integer", "minimum": 1900},
+    "quarter": {"type": "string", "pattern": "^[0-9]{4}Q[1-4]$"},
+    "target_scope": {"enum": ["chart", "quarter"]},
+    "chart_type": {"enum": ["return_overlay", "normalized_price", "return_scatter", "lag_correlation", "event_response", null]},
+    "observation_text": {"type": "string"},
+    "tags": {"type": "array", "items": {"enum": ["synchronous", "possible catch-up", "possible reversal", "persistent divergence", "stock-specific outlier", "stock-specific event", "sector-wide move", "possible regime change", "unclear"]}, "uniqueItems": true},
+    "hypothesis": {"type": "string"},
+    "counter_hypothesis": {"type": "string"},
+    "alternative_explanation": {"type": "string"},
+    "evidence_needed": {"type": "string"},
+    "confidence": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+    "created_at": {"type": "string", "format": "date-time"},
+    "updated_at": {"type": "string", "format": "date-time"},
+    "author": {"type": "string"},
+    "raw_note": {"type": "string"},
+    "derived_analysis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["analysis_version", "analyzed_at", "extracted_claims", "machine_derived_retrieval_metadata", "analysis_method", "limitations"],
+      "properties": {
+        "analysis_version": {"type": "integer", "minimum": 1},
+        "analyzed_at": {"type": "string", "format": "date-time"},
+        "extracted_claims": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["extracted_statement", "claim_type", "claim_type_label", "evidence_status", "supporting_measurements", "semantic_or_deterministic_basis", "limitation", "interpretation_boundary", "unresolved_evidence"],
+            "properties": {
+              "extracted_statement": {"type": "string"},
+              "claim_type": {"enum": ["verifiable_observational", "interpretation_hypothesis", "external_context", "question_evidence_need"]},
+              "claim_type_label": {"type": "string"},
+              "evidence_status": {"enum": ["supported by bound observations", "partially supported", "not established by current evidence", "contradicted by bound observations", "not currently testable from available Observatory context"]},
+              "supporting_measurements": {"type": "array", "items": {"type": "object"}},
+              "semantic_or_deterministic_basis": {"type": "string"},
+              "limitation": {"type": "string"},
+              "interpretation_boundary": {"type": "string"},
+              "unresolved_evidence": {"type": "array", "items": {"type": "string"}}
+            }
+          }
+        },
+        "machine_derived_retrieval_metadata": {"type": "array", "items": {"enum": ["possible_synchrony", "possible_timing_asymmetry", "possible_divergence", "event_context_needed"]}, "uniqueItems": true},
+        "analysis_method": {"type": "string"},
+        "limitations": {"type": "string"}
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["chart_artifacts", "machine_measurement", "report_artifact", "report_version", "run_identity", "cache_identity", "provider", "observatory_version", "observatory_git_commit"],
+      "properties": {
+        "chart_artifacts": {"type": "array", "minItems": 1, "items": {"type": "object", "required": ["chart_type", "path", "sha256"]}},
+        "machine_measurement": {"type": "object", "required": ["path", "sha256", "period", "format_version"]},
+        "report_artifact": {"type": "object", "required": ["path", "sha256"]},
+        "report_version": {"type": "string", "minLength": 1},
+        "run_identity": {"type": "object", "required": ["manifest_path", "manifest_sha256", "generated_at_utc", "config"]},
+        "cache_identity": {"type": "object"},
+        "provider": {"type": "object"},
+        "observatory_version": {"type": "string", "minLength": 1},
+        "observatory_git_commit": {"type": "string", "minLength": 1}
+      }
+    },
+    "prohibited_uses": {"type": "array", "allOf": [{"contains": {"const": "training labels"}}, {"contains": {"const": "trading signals"}}, {"contains": {"const": "confirmatory evidence"}}]}
+  }
+}

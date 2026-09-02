@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Candidate Hypothesis Export Contract (Not Implemented)",
+  "type": "object",
+  "required": ["hypothesis_id", "pair", "motivating_observation_ids", "machine_measurement_refs", "chart_refs", "context_refs", "hypothesis", "counter_hypotheses", "evidence_needed", "provenance_refs", "exported_at", "status"],
+  "properties": {
+    "hypothesis_id": {"type": "string"},
+    "pair": {"type": "array", "minItems": 2, "maxItems": 2},
+    "motivating_observation_ids": {"type": "array", "items": {"type": "string"}},
+    "machine_measurement_refs": {"type": "array", "items": {"type": "string"}},
+    "chart_refs": {"type": "array", "items": {"type": "string"}},
+    "context_refs": {"type": "array", "items": {"type": "string"}},
+    "hypothesis": {"type": "string"},
+    "counter_hypotheses": {"type": "array", "items": {"type": "string"}},
+    "evidence_needed": {"type": "array", "items": {"type": "string"}},
+    "provenance_refs": {"type": "array", "items": {"type": "string"}},
+    "exported_at": {"type": "string", "format": "date-time"},
+    "status": {"const": "candidate_question_for_external_formal_research"}
+  }
+}
