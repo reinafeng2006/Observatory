@@ -24,10 +24,16 @@ identity, cache provenance, and SHA-256 hashes for every artifact.
 
 The full-period outputs are always retained. The same five plots are also
 generated for every calendar quarter in the request under `quarters/YYYYQn/`.
-Quarterly transforms use only that quarter's aligned common closes; parameters
-are never re-estimated. Plot labels state the quarter, common-observation count,
-relevant descriptive sample size, and qualifying complete-window event counts.
-`quarterly_summary.csv` provides the corresponding descriptive inventory.
+Log returns are computed once on the full aligned common-date series, so a
+quarter's first trading observation retains its return from the preceding
+common observation when one is available. Normalized prices rebase within each
+quarter. Lagged correlations use only observations dated in that quarter.
+Events belong to the quarter of their event date, while their fixed ±5-session
+response windows come from the full aligned series and may cross quarter
+boundaries. Parameters are never re-estimated. Plot labels state the quarter,
+common-observation count, relevant descriptive sample size, and qualifying
+complete-window event counts. `quarterly_summary.csv` provides the corresponding
+descriptive inventory.
 
 Use `--offline` to require an existing cache entry. The event view uses the
 fixed default definition `abs(log return) >= 0.03` and a fixed ±5 common-session

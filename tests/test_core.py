@@ -1,10 +1,11 @@
 from datetime import date
+import json
 
 import numpy as np
 import pandas as pd
 import pytest
 
-from observatory.core import RunConfig, align_prices, lagged_correlations, quarter_frame, run
+from observatory.core import RunConfig, align_prices, event_responses, lagged_correlations, quarter_frame, run
 
 
 class FrozenFixtureProvider:
@@ -40,16 +41,39 @@ def test_reproducible_bundle_and_immutable_cache(tmp_path):
     assert (tmp_path / "run1" / "05_event_centered_response.png").exists()
     assert (tmp_path / "run1" / "quarters" / "2024Q1" / "05_event_centered_response.png").exists()
     assert (tmp_path / "run1" / "quarterly_summary.csv").exists()
+    manifest = json.loads(first.read_text(encoding="utf-8"))
+    semantics = manifest["quarter_slicing"]
+    assert semantics["returns"] == "computed once on full aligned series before slicing"
+    assert "may cross quarter boundaries" in semantics["event_response_windows"]
+    assert semantics["parameters_reestimated"] is False
 
 
-def test_quarter_slice_recomputes_returns_and_normalization():
+def test_quarter_slice_preserves_full_series_returns_and_rebases_normalization():
     dates = pd.to_datetime(["2024-03-29", "2024-04-01", "2024-04-02"])
-    frame = pd.DataFrame({"date": dates, "close_000001": [10.0, 20.0, 22.0], "close_000002": [5.0, 8.0, 8.8]})
+    a = pd.DataFrame({"date": dates, "close": [10.0, 20.0, 22.0]})
+    b = pd.DataFrame({"date": dates, "close": [5.0, 8.0, 8.8]})
+    frame = align_prices(a, b, "000001", "000002")
     quarterly = quarter_frame(frame, pd.Period("2024Q2"), "000001", "000002")
     assert len(quarterly) == 2
-    assert pd.isna(quarterly.loc[0, "log_return_000001"])
+    assert quarterly.loc[0, "log_return_000001"] == pytest.approx(np.log(20 / 10))
     assert quarterly.loc[0, "normalized_000001"] == 1
     assert quarterly.loc[1, "log_return_000001"] == pytest.approx(np.log(22 / 20))
+
+
+def test_quarter_event_membership_uses_full_cross_boundary_window():
+    dates = pd.bdate_range("2024-03-25", periods=15)
+    frame = pd.DataFrame({
+        "date": dates,
+        "log_return_000001": np.zeros(len(dates)),
+        "log_return_000002": np.arange(len(dates), dtype=float) / 1000,
+    })
+    event_position = dates.get_loc(pd.Timestamp("2024-04-01"))
+    frame.loc[event_position, "log_return_000001"] = 0.04
+    responses = event_responses(frame, "000001", "000002", 0.03, 5, pd.Period("2024Q2"))
+    assert responses.event_date.nunique() == 1
+    assert responses.event_date.iloc[0] == pd.Timestamp("2024-04-01")
+    assert set(responses.offset) == set(range(-5, 6))
+    assert responses.loc[responses.offset == -5, "response_cumulative_log_return"].notna().all()
 
 
 @pytest.mark.parametrize("ticker", ["1", "ABCDEF", "0000011"])

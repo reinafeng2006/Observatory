@@ -90,17 +90,27 @@ def lagged_correlations(frame: pd.DataFrame, a: str, b: str) -> pd.DataFrame:
     return pd.DataFrame({"lag": range(-5, 6), "correlation": values, "sample_size": sample_sizes})
 
 
-def event_responses(frame: pd.DataFrame, source: str, response: str, threshold: float, window: int) -> pd.DataFrame:
+def event_responses(
+    frame: pd.DataFrame,
+    source: str,
+    response: str,
+    threshold: float,
+    window: int,
+    event_quarter: pd.Period | None = None,
+) -> pd.DataFrame:
     source_returns = frame[f"log_return_{source}"]
     response_returns = frame[f"log_return_{response}"]
+    event_mask = source_returns.abs() >= threshold
+    if event_quarter is not None:
+        event_mask &= frame["date"].dt.to_period("Q") == event_quarter
     rows: list[dict] = []
-    for idx in frame.index[source_returns.abs() >= threshold]:
-        if idx - window < 0 or idx + window >= len(frame):
+    for position in np.flatnonzero(event_mask.to_numpy()):
+        if position - window < 0 or position + window >= len(frame):
             continue
         for offset in range(-window, window + 1):
-            segment = response_returns.iloc[idx : idx + offset + 1] if offset >= 0 else response_returns.iloc[idx + offset : idx + 1]
+            segment = response_returns.iloc[position : position + offset + 1] if offset >= 0 else response_returns.iloc[position + offset : position + 1]
             value = segment.sum() if offset >= 0 else -segment.iloc[1:].sum()
-            rows.append({"source": source, "response": response, "event_date": frame.at[idx, "date"], "offset": offset, "response_cumulative_log_return": value})
+            rows.append({"source": source, "response": response, "event_date": frame.iloc[position]["date"], "offset": offset, "response_cumulative_log_return": value})
     return pd.DataFrame(
         rows,
         columns=["source", "response", "event_date", "offset", "response_cumulative_log_return"],
@@ -115,7 +125,13 @@ def _finish(fig: plt.Figure, path: Path, context: str | None = None) -> None:
     plt.close(fig)
 
 
-def write_plots(frame: pd.DataFrame, config: RunConfig, output: Path, quarter: str | None = None) -> list[Path]:
+def write_plots(
+    frame: pd.DataFrame,
+    config: RunConfig,
+    output: Path,
+    quarter: pd.Period | None = None,
+    event_frame: pd.DataFrame | None = None,
+) -> list[Path]:
     a, b = config.ticker_a, config.ticker_b
     common_n = len(frame)
     return_n = frame[[f"log_return_{a}", f"log_return_{b}"]].dropna().shape[0]
@@ -127,7 +143,8 @@ def write_plots(frame: pd.DataFrame, config: RunConfig, output: Path, quarter: s
     lags = lagged_correlations(frame, a, b); lags.to_csv(output / "lagged_correlations.csv", index=False)
     lag_n = f"n={lags.sample_size.min()}–{lags.sample_size.max()} by lag"
     fig, ax = plt.subplots(figsize=(7, 4)); ax.bar(lags.lag, lags.correlation); ax.axhline(0, color="black", lw=.7); ax.set(title=f"Lagged cross-correlation: {a}(t) vs {b}(t+lag) | {lag_n}", xlabel="lag (common trading sessions)", ylabel="Pearson correlation", xticks=range(-5, 6)); made.append(output / "04_lagged_cross_correlation.png"); _finish(fig, made[-1], context)
-    responses = pd.concat([event_responses(frame, a, b, config.event_threshold, config.event_window), event_responses(frame, b, a, config.event_threshold, config.event_window)], ignore_index=True)
+    response_source = frame if event_frame is None else event_frame
+    responses = pd.concat([event_responses(response_source, a, b, config.event_threshold, config.event_window, quarter), event_responses(response_source, b, a, config.event_threshold, config.event_window, quarter)], ignore_index=True)
     responses.to_csv(output / "event_responses.csv", index=False, date_format="%Y-%m-%d")
     fig, axes = plt.subplots(1, 2, figsize=(11, 4), sharey=True)
     for ax, (source, response) in zip(axes, ((a, b), (b, a))):
@@ -145,11 +162,13 @@ def write_plots(frame: pd.DataFrame, config: RunConfig, output: Path, quarter: s
 
 
 def quarter_frame(frame: pd.DataFrame, quarter: pd.Period, ticker_a: str, ticker_b: str) -> pd.DataFrame:
-    """Slice common closes first, then recompute fixed within-quarter transforms."""
-    result = frame.loc[frame.date.dt.to_period("Q") == quarter, ["date", f"close_{ticker_a}", f"close_{ticker_b}"]].copy()
+    """Slice full-series observations; preserve returns and rebase prices only."""
+    columns = ["date"]
+    for ticker in (ticker_a, ticker_b):
+        columns.extend([f"close_{ticker}", f"log_return_{ticker}"])
+    result = frame.loc[frame.date.dt.to_period("Q") == quarter, columns].copy()
     result.reset_index(drop=True, inplace=True)
     for ticker in (ticker_a, ticker_b):
-        result[f"log_return_{ticker}"] = np.log(result[f"close_{ticker}"]).diff()
         result[f"normalized_{ticker}"] = result[f"close_{ticker}"] / result[f"close_{ticker}"].iloc[0]
     return result
 
@@ -174,7 +193,7 @@ def run(config: RunConfig, provider: PriceProvider, cache_dir: Path, output: Pat
         quarter_dir = quarter_root / str(quarter); quarter_dir.mkdir()
         quarter_aligned = quarter_dir / "aligned_observations.csv"
         quarterly.to_csv(quarter_aligned, index=False, date_format="%Y-%m-%d")
-        quarter_plots = write_plots(quarterly, config, quarter_dir, str(quarter))
+        quarter_plots = write_plots(quarterly, config, quarter_dir, quarter, aligned)
         quarter_events = pd.read_csv(quarter_dir / "event_responses.csv")
         event_counts = quarter_events.groupby("source").event_date.nunique().to_dict() if not quarter_events.empty else {}
         quarter_rows.append({"quarter": str(quarter), "common_observations": len(quarterly), "paired_returns": quarterly[[f"log_return_{config.ticker_a}", f"log_return_{config.ticker_b}"]].dropna().shape[0], f"qualifying_events_{config.ticker_a}": event_counts.get(int(config.ticker_a), event_counts.get(config.ticker_a, 0)), f"qualifying_events_{config.ticker_b}": event_counts.get(int(config.ticker_b), event_counts.get(config.ticker_b, 0)), "status": "generated"})
@@ -190,7 +209,17 @@ def run(config: RunConfig, provider: PriceProvider, cache_dir: Path, output: Pat
         "raw_inputs": {config.ticker_a: provenance_a, config.ticker_b: provenance_b},
         "common_rows": len(aligned), "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "runtime": {"python": platform.python_version(), "pandas": pd.__version__, "numpy": np.__version__, "matplotlib": matplotlib.__version__},
-        "quarter_slicing": {"frequency": "fixed calendar quarter", "transforms_recomputed_within_quarter": True, "parameters_reestimated": False, "summary": quarterly_summary.name},
+        "quarter_slicing": {
+            "frequency": "fixed calendar quarter",
+            "returns": "computed once on full aligned series before slicing",
+            "first_quarter_observation_return": "retained relative to preceding full-series common observation when available",
+            "normalized_prices": "rebased independently to first common close in each quarter",
+            "lagged_correlations": "computed only from return observations whose dates belong to the quarter",
+            "event_membership": "assigned by event date quarter",
+            "event_response_windows": "fixed full-series common-session window; may cross quarter boundaries",
+            "parameters_reestimated": False,
+            "summary": quarterly_summary.name,
+        },
         "artifacts": {p.relative_to(output).as_posix(): _sha256(p) for p in artifacts},
         "prohibited_uses": ["automated pair selection", "lead-lag classification", "trading signals", "parameter optimization", "backtesting", "formal inference"],
     }
