@@ -8,6 +8,8 @@
 3. **Deterministic Machine Observation** — formula-based descriptive measures,
    never LLM visual interpretation.
 4. **Visual Observation** — five fixed plots, full-period/quarterly/annual views.
+5. **Local Human Note Service** — loopback-only static serving and an append-only
+   JSONL revision log stored outside generated artifacts.
 5. **Human Research Notes** — distinct observation, tags, hypothesis,
    counter-hypothesis, evidence needed, and confidence.
 

@@ -5,5 +5,6 @@ __pycache__/
 cache/
 runs/
 outputs/
+human_notes/
 dist/
 *.egg-info/

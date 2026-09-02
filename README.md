@@ -78,12 +78,25 @@ machine methodology is rendered once per chart type; realized measurements and
 intermediate values remain quarter-specific. Optional tags are selected only by
 the researcher.
 
-Human notes are stored as structured browser-local records and can be exported
-or imported as JSON. Each record contains pair, period, chart type, observation,
-tags, hypothesis, alternative explanation, optional confidence, and timestamp.
-They are exploratory notes only and never become training labels, formal
-classifications, pair-selection inputs, or trading signals automatically. The
-record contract is documented in `schemas/human_observation.schema.json`.
+When an output bundle is served by the loopback-only Observatory application,
+the report forms save structured records to an append-only JSONL file outside
+the generated output bundle. Static HTML remains readable without the server,
+but clearly marks drafts as unsaved and disables persistence. Records support
+chart-quarter and quarter-level targets, multiple notes per target, and revision
+edits that retain the original creation timestamp.
+
+Start the local application with an explicit output and separate notes path:
+
+```powershell
+observatory-serve --output outputs/manual_inspection/600031_000425 --notes human_notes/600031_000425/observations.jsonl
+```
+
+Every persisted revision binds chart hashes, machine-measurement hash/version,
+report hash/version, manifest/run identity, immutable cache identity, provider,
+and Observatory version/Git commit. Human notes never modify generated artifacts
+and never become training labels, formal classifications, pair-selection inputs,
+or trading signals automatically. The record contract is documented in
+`schemas/human_observation.schema.json`.
 
 `machine_measurements.json` contains fixed formula definitions, input artifact
 paths, sample sizes, per-quarter values, full lag profiles, event-aligned

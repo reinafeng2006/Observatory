@@ -4,16 +4,18 @@
   "title": "Exploratory Human Research Note",
   "type": "object",
   "additionalProperties": false,
-  "required": ["observation_id", "record_type", "pair_id", "company_a", "company_b", "year", "quarter", "chart_type", "observation_text", "tags", "hypothesis", "counter_hypothesis", "alternative_explanation", "evidence_needed", "confidence", "created_at", "updated_at", "author", "prohibited_uses"],
+  "required": ["observation_id", "revision", "record_type", "pair_id", "company_a", "company_b", "year", "quarter", "target_scope", "chart_type", "observation_text", "tags", "hypothesis", "counter_hypothesis", "alternative_explanation", "evidence_needed", "confidence", "created_at", "updated_at", "author", "provenance", "prohibited_uses"],
   "properties": {
     "observation_id": {"type": "string", "minLength": 1},
+    "revision": {"type": "integer", "minimum": 1},
     "record_type": {"const": "exploratory_human_note"},
     "pair_id": {"type": "string", "pattern": "^[0-9]{6}/[0-9]{6}$"},
     "company_a": {"type": "string", "pattern": "^[0-9]{6}$"},
     "company_b": {"type": "string", "pattern": "^[0-9]{6}$"},
     "year": {"type": "integer", "minimum": 1900},
     "quarter": {"type": "string", "pattern": "^[0-9]{4}Q[1-4]$"},
-    "chart_type": {"enum": ["return_overlay", "normalized_price", "return_scatter", "lag_correlation", "event_response"]},
+    "target_scope": {"enum": ["chart", "quarter"]},
+    "chart_type": {"enum": ["return_overlay", "normalized_price", "return_scatter", "lag_correlation", "event_response", null]},
     "observation_text": {"type": "string"},
     "tags": {"type": "array", "items": {"enum": ["synchronous", "possible catch-up", "possible reversal", "persistent divergence", "stock-specific outlier", "stock-specific event", "sector-wide move", "possible regime change", "unclear"]}, "uniqueItems": true},
     "hypothesis": {"type": "string"},
@@ -24,6 +26,22 @@
     "created_at": {"type": "string", "format": "date-time"},
     "updated_at": {"type": "string", "format": "date-time"},
     "author": {"type": "string"},
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["chart_artifacts", "machine_measurement", "report_artifact", "report_version", "run_identity", "cache_identity", "provider", "observatory_version", "observatory_git_commit"],
+      "properties": {
+        "chart_artifacts": {"type": "array", "minItems": 1, "items": {"type": "object", "required": ["chart_type", "path", "sha256"]}},
+        "machine_measurement": {"type": "object", "required": ["path", "sha256", "period", "format_version"]},
+        "report_artifact": {"type": "object", "required": ["path", "sha256"]},
+        "report_version": {"type": "string", "minLength": 1},
+        "run_identity": {"type": "object", "required": ["manifest_path", "manifest_sha256", "generated_at_utc", "config"]},
+        "cache_identity": {"type": "object"},
+        "provider": {"type": "object"},
+        "observatory_version": {"type": "string", "minLength": 1},
+        "observatory_git_commit": {"type": "string", "minLength": 1}
+      }
+    },
     "prohibited_uses": {"type": "array", "allOf": [{"contains": {"const": "training labels"}}, {"contains": {"const": "trading signals"}}, {"contains": {"const": "confirmatory evidence"}}]}
   }
 }

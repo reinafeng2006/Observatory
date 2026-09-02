@@ -1,6 +1,10 @@
 from datetime import date
 import json
+from pathlib import Path
 import re
+import threading
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
 
 import numpy as np
 import pandas as pd
@@ -10,6 +14,8 @@ from observatory.core import RunConfig, align_prices, event_responses, lagged_co
 from observatory.context import prepare_context
 from observatory.measurements import compute_quarter_measurement, write_measurements
 from observatory.reports import generate_reports
+from observatory.human_notes import HumanObservationStore, REQUIRED_FIELDS, validate_record
+from observatory.server import create_server
 
 
 class FrozenFixtureProvider:
@@ -121,13 +127,16 @@ def test_annual_reports_use_existing_images_and_valid_relative_paths(tmp_path):
     assert "Human Hypothesis" in ytd
     assert "Alternative Explanation / Counter-Hypothesis" in ytd
     assert "observation_text" in ytd and "counter_hypothesis" in ytd and "evidence_needed" in ytd
+    assert "Export notes JSON" not in ytd and "localStorage" not in ytd
     assert "No sourced dated events were supplied" in ytd
     invariant_headings = ["Question", "Definition", "Inputs", "Calculation", "Rule", "Interpretation", "Assumptions", "Failure modes", "Does NOT imply", "Related chart", "Research relevance"]
     assert ytd.count('class="chart-context"') == 5
     assert ytd.count("Learn this chart") == 5
     assert ytd.count("Learn machine methodology and interpretation boundaries") == 5
     assert ytd.count('class="machine-comparison"') == 5
-    assert ytd.count('class="human-form"') == 15
+    assert ytd.count('class="human-form draft"') == 18
+    assert ytd.count('data-scope="quarter"') == 3
+    assert ytd.count('data-scope="chart"') == 15
     assert ytd.count('class="quarter-detail"') == 15
     for heading in invariant_headings:
         assert ytd.count(f"<h5>{heading}</h5>") == 5
@@ -145,6 +154,55 @@ def test_annual_reports_use_existing_images_and_valid_relative_paths(tmp_path):
                 continue
             assert (report.parent / link).resolve().exists(), f"broken link in {report.name}: {link}"
     assert (output / "machine_measurements.json").read_bytes() == machine_before
+
+
+def test_local_server_persists_reloads_edits_multiple_notes_and_provenance(tmp_path):
+    output, cache = tmp_path / "output", tmp_path / "cache"
+    config = RunConfig("000001", "000002", date(2024, 1, 1), date(2024, 2, 1), .03, 3)
+    run(config, FrozenFixtureProvider(), cache, output)
+    immutable_paths = [path for path in output.rglob("*") if path.is_file() and (path.suffix in {".csv", ".png"} or path.name == "machine_measurements.json")]
+    before = {path.relative_to(output).as_posix(): path.read_bytes() for path in immutable_paths}
+    notes = tmp_path / "human_notes" / "observations.jsonl"
+    server = create_server(output, notes, port=0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True); thread.start()
+    base = f"http://127.0.0.1:{server.server_port}"
+
+    def post(payload):
+        request = Request(base + "/api/observations", data=json.dumps(payload).encode(), headers={"Content-Type": "application/json"}, method="POST")
+        with urlopen(request) as response:
+            return json.loads(response.read())["record"]
+
+    draft = {"pair_id": "000001/000002", "quarter": "2024Q1", "target_scope": "chart", "chart_type": "return_overlay", "observation_text": "First observation", "tags": ["synchronous"], "hypothesis": "Possible shared driver", "counter_hypothesis": "Coincidental market move", "evidence_needed": "Dated market context", "confidence": .4, "author": "Researcher"}
+    try:
+        first = post(draft); second = post({**draft, "observation_text": "Second observation", "tags": ["unclear"]})
+        validate_record(first); validate_record(second)
+        with pytest.raises(ValueError, match="confidence"):
+            validate_record({**first, "confidence": 2})
+        assert first["observation_id"] != second["observation_id"]
+        assert first["provenance"]["chart_artifacts"][0]["chart_type"] == "return_overlay"
+        assert first["provenance"]["chart_artifacts"][0]["sha256"]
+        assert first["provenance"]["machine_measurement"]["sha256"]
+        assert first["provenance"]["run_identity"]["manifest_sha256"]
+        assert first["provenance"]["cache_identity"]["000001"]["sha256"]
+        assert first["provenance"]["observatory_git_commit"]
+        edited = post({**draft, "observation_id": first["observation_id"], "observation_text": "Edited observation"})
+        assert edited["revision"] == 2 and edited["created_at"] == first["created_at"]
+        assert edited["updated_at"] >= first["updated_at"]
+        query = urlencode({"pair_id": "000001/000002", "quarter": "2024Q1", "target_scope": "chart", "chart_type": "return_overlay"})
+        with urlopen(base + "/api/observations?" + query) as response:
+            loaded = json.loads(response.read())["records"]
+        assert len(loaded) == 2
+        assert next(item for item in loaded if item["observation_id"] == first["observation_id"])["observation_text"] == "Edited observation"
+        quarter_note = post({**draft, "target_scope": "quarter", "chart_type": None, "observation_text": "Quarter-level note"})
+        assert quarter_note["chart_type"] is None and len(quarter_note["provenance"]["chart_artifacts"]) == 5
+        assert len(notes.read_text(encoding="utf-8").splitlines()) == 4
+        assert len(HumanObservationStore(notes).latest(pair_id="000001/000002")) == 3
+        schema = json.loads((Path(__file__).parents[1] / "schemas" / "human_observation.schema.json").read_text(encoding="utf-8"))
+        assert set(schema["required"]) == REQUIRED_FIELDS
+    finally:
+        server.shutdown(); server.server_close(); thread.join(timeout=5)
+    after = {path.relative_to(output).as_posix(): path.read_bytes() for path in immutable_paths}
+    assert after == before
 
 
 def test_context_requires_provenance_and_is_copied(tmp_path):
