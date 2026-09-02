@@ -7,6 +7,8 @@ import pandas as pd
 import pytest
 
 from observatory.core import RunConfig, align_prices, event_responses, lagged_correlations, quarter_frame, run
+from observatory.context import prepare_context
+from observatory.measurements import compute_quarter_measurement, write_measurements
 from observatory.reports import generate_reports
 
 
@@ -50,6 +52,9 @@ def test_reproducible_bundle_and_immutable_cache(tmp_path):
     assert semantics["returns"] == "computed once on full aligned series before slicing"
     assert "may cross quarter boundaries" in semantics["event_response_windows"]
     assert semantics["parameters_reestimated"] is False
+    machine = json.loads((tmp_path / "run1" / "machine_measurements.json").read_text(encoding="utf-8"))
+    assert machine["fixed_definitions"] == {"event_threshold": 0.03, "event_window": [-5, 5], "lag_range": [-5, 5], "return": "daily log return"}
+    assert machine["records"][0]["inputs"]["lag_profile"].endswith("lagged_correlations.csv")
 
 
 def test_quarter_slice_preserves_full_series_returns_and_rebases_normalization():
@@ -84,6 +89,7 @@ def test_annual_reports_use_existing_images_and_valid_relative_paths(tmp_path):
     output = tmp_path / "output"
     output.mkdir(parents=True)
     rows = []
+    measurements = []
     for year in range(2023, 2027):
         final_quarter = 3 if year == 2026 else 4
         for number in range(1, final_quarter + 1):
@@ -91,10 +97,14 @@ def test_annual_reports_use_existing_images_and_valid_relative_paths(tmp_path):
             quarter_dir = output / "quarters" / quarter
             quarter_dir.mkdir(parents=True)
             pd.DataFrame({"lag": range(-5, 6), "correlation": [0.1] * 11, "sample_size": [50] * 11}).to_csv(quarter_dir / "lagged_correlations.csv", index=False)
+            pd.DataFrame(columns=["source", "response", "event_date", "offset", "response_cumulative_log_return"]).to_csv(quarter_dir / "event_responses.csv", index=False)
+            frame = pd.DataFrame({"normalized_600031": np.linspace(1, 1.1, 60), "normalized_000425": np.linspace(1, .9, 60), "log_return_600031": np.linspace(-.02, .02, 60), "log_return_000425": np.linspace(-.01, .03, 60)})
+            measurements.append(compute_quarter_measurement(frame, quarter_dir, "600031", "000425", quarter))
             for filename in ("01_return_overlay.png", "02_normalized_price.png", "03_return_scatter.png", "04_lagged_cross_correlation.png", "05_event_centered_response.png"):
                 (quarter_dir / filename).write_bytes(b"existing-full-resolution-image")
             rows.append({"quarter": quarter, "common_observations": 60, "paired_returns": 60, "qualifying_events_600031": 2, "qualifying_events_000425": 3, "status": "generated"})
     pd.DataFrame(rows).to_csv(output / "quarterly_summary.csv", index=False)
+    write_measurements(output, measurements)
     for filename in ("01_return_overlay.png", "02_normalized_price.png", "03_return_scatter.png", "04_lagged_cross_correlation.png", "05_event_centered_response.png"):
         (output / filename).write_bytes(b"existing-full-resolution-image")
     config = RunConfig("600031", "000425", date(2023, 1, 1), date(2026, 8, 31))
@@ -103,11 +113,29 @@ def test_annual_reports_use_existing_images_and_valid_relative_paths(tmp_path):
     ytd = (output / "reports" / "2026_YTD_pair_observation.html").read_text(encoding="utf-8")
     assert "2026 YTD — INCOMPLETE CALENDAR YEAR" in ytd
     assert "2026Q4" not in ytd
+    assert "Machine Measurement" in ytd
+    assert "Human Observation" in ytd
+    assert "Human Hypothesis" in ytd
+    assert "Alternative Explanation / Counter-Hypothesis" in ytd
+    assert "observation_text" in ytd and "alternative_explanation" in ytd and "timestamp" in ytd
+    assert "No sourced dated events were supplied" in ytd
     assert ytd.index("Daily log-return overlay") < ytd.index("Quarterly normalized-price path") < ytd.index("Contemporaneous return scatter") < ytd.index("Lagged cross-correlation") < ytd.index("Event-centered response")
     for report in reports:
         content = report.read_text(encoding="utf-8")
         for link in re.findall(r'(?:href|src)="([^"]+)"', content):
             assert (report.parent / link).resolve().exists(), f"broken link in {report.name}: {link}"
+
+
+def test_context_requires_provenance_and_is_copied(tmp_path):
+    output = tmp_path / "output"; output.mkdir()
+    valid = tmp_path / "events.csv"
+    pd.DataFrame([{"date": "2024-01-10", "quarter": "2024Q1", "scope": "industry", "description": "Sourced event", "source": "Publisher", "source_url": "https://example.test/event"}]).to_csv(valid, index=False)
+    artifacts = prepare_context(output, None, valid)
+    assert artifacts == [output / "context" / "event_context.csv"]
+    invalid = tmp_path / "invalid.csv"
+    pd.DataFrame([{"date": "2024-01-10", "quarter": "2024Q1", "scope": "industry", "description": "Unsourced", "source": "", "source_url": ""}]).to_csv(invalid, index=False)
+    with pytest.raises(ValueError, match="source and source_url"):
+        prepare_context(tmp_path / "other", None, invalid)
 
 
 @pytest.mark.parametrize("ticker", ["1", "ABCDEF", "0000011"])

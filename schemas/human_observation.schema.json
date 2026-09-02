@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://observatory.local/schemas/human_observation.schema.json",
+  "title": "Exploratory Human Observation Record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "record_type", "pair", "period", "chart_type", "observation_text", "tags", "hypothesis", "alternative_explanation", "confidence", "timestamp", "prohibited_uses"],
+  "properties": {
+    "id": {"type": "string", "minLength": 1},
+    "record_type": {"const": "exploratory_human_note"},
+    "pair": {"type": "array", "prefixItems": [{"type": "string", "pattern": "^[0-9]{6}$"}, {"type": "string", "pattern": "^[0-9]{6}$"}], "minItems": 2, "maxItems": 2},
+    "period": {"type": "string", "pattern": "^[0-9]{4}Q[1-4]$"},
+    "chart_type": {"enum": ["return_overlay", "normalized_price", "return_scatter", "lag_correlation", "event_response"]},
+    "observation_text": {"type": "string"},
+    "tags": {"type": "array", "items": {"enum": ["synchronous", "possible catch-up", "possible reversal", "persistent divergence", "stock-specific event", "unclear"]}, "uniqueItems": true},
+    "hypothesis": {"type": "string"},
+    "alternative_explanation": {"type": "string"},
+    "confidence": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+    "timestamp": {"type": "string", "format": "date-time"},
+    "prohibited_uses": {"type": "array", "contains": {"const": "trading signals"}}
+  }
+}

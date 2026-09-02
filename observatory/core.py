@@ -14,6 +14,7 @@ import numpy as np
 import pandas as pd
 
 from .provider import PriceProvider
+from .measurements import compute_quarter_measurement, write_measurements
 
 LABEL = "EXPLORATORY — NOT A TRADING SIGNAL"
 
@@ -173,7 +174,15 @@ def quarter_frame(frame: pd.DataFrame, quarter: pd.Period, ticker_a: str, ticker
     return result
 
 
-def run(config: RunConfig, provider: PriceProvider, cache_dir: Path, output: Path, offline: bool = False) -> Path:
+def run(
+    config: RunConfig,
+    provider: PriceProvider,
+    cache_dir: Path,
+    output: Path,
+    offline: bool = False,
+    company_context: Path | None = None,
+    event_context: Path | None = None,
+) -> Path:
     config.validate(); output.mkdir(parents=True, exist_ok=False)
     a, provenance_a = load_price(provider, cache_dir, config.ticker_a, config.start, config.end, offline)
     b, provenance_b = load_price(provider, cache_dir, config.ticker_b, config.start, config.end, offline)
@@ -182,6 +191,7 @@ def run(config: RunConfig, provider: PriceProvider, cache_dir: Path, output: Pat
     plots = write_plots(aligned, config, output)
     artifacts = [aligned_path, output / "lagged_correlations.csv", output / "event_responses.csv", *plots]
     quarter_rows = []
+    machine_records = []
     quarter_root = output / "quarters"; quarter_root.mkdir()
     first_quarter = pd.Period(config.start, freq="Q")
     last_quarter = pd.Period(config.end, freq="Q")
@@ -194,6 +204,7 @@ def run(config: RunConfig, provider: PriceProvider, cache_dir: Path, output: Pat
         quarter_aligned = quarter_dir / "aligned_observations.csv"
         quarterly.to_csv(quarter_aligned, index=False, date_format="%Y-%m-%d")
         quarter_plots = write_plots(quarterly, config, quarter_dir, quarter, aligned)
+        machine_records.append(compute_quarter_measurement(quarterly, quarter_dir, config.ticker_a, config.ticker_b, str(quarter)))
         quarter_events = pd.read_csv(quarter_dir / "event_responses.csv")
         event_counts = quarter_events.groupby("source").event_date.nunique().to_dict() if not quarter_events.empty else {}
         quarter_rows.append({"quarter": str(quarter), "common_observations": len(quarterly), "paired_returns": quarterly[[f"log_return_{config.ticker_a}", f"log_return_{config.ticker_b}"]].dropna().shape[0], f"qualifying_events_{config.ticker_a}": event_counts.get(int(config.ticker_a), event_counts.get(config.ticker_a, 0)), f"qualifying_events_{config.ticker_b}": event_counts.get(int(config.ticker_b), event_counts.get(config.ticker_b, 0)), "status": "generated"})
@@ -201,6 +212,10 @@ def run(config: RunConfig, provider: PriceProvider, cache_dir: Path, output: Pat
     quarterly_summary = output / "quarterly_summary.csv"
     pd.DataFrame(quarter_rows).to_csv(quarterly_summary, index=False)
     artifacts.append(quarterly_summary)
+    machine_measurements = write_measurements(output, machine_records)
+    artifacts.append(machine_measurements)
+    from .context import prepare_context
+    artifacts.extend(prepare_context(output, company_context, event_context))
     from .reports import generate_reports
     report_artifacts = generate_reports(output, config, provider.provider_id, provider.provider_version)
     artifacts.extend(report_artifacts)
@@ -224,8 +239,11 @@ def run(config: RunConfig, provider: PriceProvider, cache_dir: Path, output: Pat
             "summary": quarterly_summary.name,
         },
         "annual_reports": {
-            "role": "visual organization of existing quarterly PNG artifacts only",
-            "statistics_recomputed": False,
+            "role": "visual organization plus deterministic descriptive measurement and human note-taking layers",
+            "machine_measurements": "machine_measurements.json",
+            "machine_interpretation": False,
+            "human_notes": "blank by default; saved in browser localStorage and exportable as structured JSON",
+            "human_notes_prohibited_uses": ["training labels", "formal classifications", "pair selection", "trading signals"],
             "source_images": "quarters/YYYYQn/*.png",
             "index": "reports/index.html",
         },

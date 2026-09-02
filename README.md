@@ -46,6 +46,33 @@ directly to the existing full-resolution quarterly PNGs; it does not regenerate
 images or recompute statistics. Empty researcher-note prompts are provided for
 manual observation only.
 
+## Human and machine observation layers
+
+Annual reports visibly separate four layers: deterministic Machine
+Measurement, Human Observation, Human Hypothesis, and Alternative Explanation /
+Counter-Hypothesis. Chart explanations and traditional visual prompts guide
+attention without pre-filling any field or forcing a category. Optional tags
+are selected only by the researcher.
+
+Human notes are stored as structured browser-local records and can be exported
+or imported as JSON. Each record contains pair, period, chart type, observation,
+tags, hypothesis, alternative explanation, optional confidence, and timestamp.
+They are exploratory notes only and never become training labels, formal
+classifications, pair-selection inputs, or trading signals automatically. The
+record contract is documented in `schemas/human_observation.schema.json`.
+
+`machine_measurements.json` contains fixed formula definitions, input artifact
+paths, sample sizes, per-quarter values, full lag profiles, event-aligned
+summaries, and deterministic rule results. These are descriptive measurements,
+not LLM visual interpretations or claims about causality, predictability,
+mean-reversion, pair quality, or trading opportunity.
+
+Optional sourced context can be supplied with `--company-context` and
+`--event-context`. Company CSV rows require `quarter,ticker,attribute,value,
+as_of_date,source,source_url`; event rows require `date,quarter,scope,
+description,source,source_url`. Every row must contain provenance. If no context
+is supplied, reports say so explicitly and invent nothing.
+
 Use `--offline` to require an existing cache entry. The event view uses the
 fixed default definition `abs(log return) >= 0.03` and a fixed ±5 common-session
 window; these can be changed explicitly for visual exploration and are recorded
