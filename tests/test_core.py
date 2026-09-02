@@ -54,6 +54,9 @@ def test_reproducible_bundle_and_immutable_cache(tmp_path):
     assert semantics["parameters_reestimated"] is False
     machine = json.loads((tmp_path / "run1" / "machine_measurements.json").read_text(encoding="utf-8"))
     assert machine["fixed_definitions"] == {"event_threshold": 0.03, "event_window": [-5, 5], "lag_range": [-5, 5], "return": "daily log return"}
+    assert set(machine["observation_contracts"]) == {"return_overlay", "normalized_price", "return_scatter", "lag_correlation", "event_response"}
+    contract_fields = {"question", "definition", "inputs", "calculation", "rule", "interpretation", "assumptions", "failure_modes", "does_not_imply", "related_chart", "research_relevance"}
+    assert all(set(contract) == contract_fields for contract in machine["observation_contracts"].values())
     assert machine["records"][0]["inputs"]["lag_profile"].endswith("lagged_correlations.csv")
 
 
@@ -113,12 +116,17 @@ def test_annual_reports_use_existing_images_and_valid_relative_paths(tmp_path):
     ytd = (output / "reports" / "2026_YTD_pair_observation.html").read_text(encoding="utf-8")
     assert "2026 YTD — INCOMPLETE CALENDAR YEAR" in ytd
     assert "2026Q4" not in ytd
-    assert "Machine Measurement" in ytd
+    assert "Machine Observation" in ytd
     assert "Human Observation" in ytd
     assert "Human Hypothesis" in ytd
     assert "Alternative Explanation / Counter-Hypothesis" in ytd
     assert "observation_text" in ytd and "counter_hypothesis" in ytd and "evidence_needed" in ytd
     assert "No sourced dated events were supplied" in ytd
+    headings = ["Question", "Definition", "Inputs", "Calculation", "Intermediate values", "Rule", "Machine statement", "Interpretation", "Assumptions", "Failure modes", "Does NOT imply", "Related chart", "Research relevance"]
+    for heading in headings:
+        assert f"<h5>{heading}</h5>" in ytd
+    positions = [ytd.index(f"<h5>{heading}</h5>") for heading in headings]
+    assert positions == sorted(positions)
     assert ytd.index("Daily log-return overlay") < ytd.index("Quarterly normalized-price path") < ytd.index("Contemporaneous return scatter") < ytd.index("Lagged cross-correlation") < ytd.index("Event-centered response")
     machine_before = (output / "machine_measurements.json").read_bytes()
     for report in reports:

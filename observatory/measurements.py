@@ -20,6 +20,74 @@ FORMULAS = {
     "normalized_end": "Last quarter close divided by first quarter common close.",
 }
 
+MACHINE_OBSERVATION_CONTRACTS = {
+    "return_overlay": {
+        "question": "How large and how often are the two stocks' daily adjusted moves in the quarter?",
+        "definition": "Daily log returns, sample volatility, volatility ratio B/A, and same-sign return share.",
+        "inputs": "Quarter-dated paired daily log returns computed once on the full aligned qfq-close series.",
+        "calculation": "Drop rows missing either return; compute ddof=1 standard deviations, B/A ratio, and equal-sign count divided by paired count.",
+        "rule": "Direct numerical display only; no categorical threshold is applied.",
+        "interpretation": "The values describe relative movement magnitude and how often return directions coincide.",
+        "assumptions": "Aligned dates are comparable; qfq returns are suitable for retrospective description; valid rows represent the quarter sample.",
+        "failure_modes": "Small samples, outliers, volatility clustering, suspensions, stale prices, and later qfq revisions can distort comparison.",
+        "does_not_imply": "Common causation, stable dependence, predictability, pair quality, or a trading opportunity.",
+        "related_chart": "Daily log-return overlay.",
+        "research_relevance": "Magnitude mismatch or changing co-movement can motivate questions about common versus stock-specific price discovery.",
+    },
+    "normalized_price": {
+        "question": "How did the two quarter-local price paths evolve relative to their own starting values?",
+        "definition": "Quarter-local normalized price N_i(t)=P_i(t)/P_i(first common quarter date).",
+        "inputs": "Quarter-dated qfq closes on common trading dates.",
+        "calculation": "Divide each stock's qfq close by its first common close in the quarter; display final normalized levels.",
+        "rule": "Direct numerical display only; no convergence category is assigned.",
+        "interpretation": "The path shows relative cumulative movement from a common visual baseline of 1.",
+        "assumptions": "The first common close is an appropriate descriptive baseline and qfq revisions are acceptable for retrospective exploration.",
+        "failure_modes": "Endpoint choice, quarter rebasing, corporate-action revisions, and a single extreme start date can change the apparent gap.",
+        "does_not_imply": "Mean reversion, catch-up, equilibrium, cointegration, or tradability.",
+        "related_chart": "Quarterly normalized-price path.",
+        "research_relevance": "Persistent or changing relative paths can motivate explicit hypotheses and evidence requests without validating them.",
+    },
+    "return_scatter": {
+        "question": "What is the contemporaneous descriptive relation between paired daily returns?",
+        "definition": "Pearson/Spearman correlation, same-sign share, and OLS r_B=alpha+beta*r_A+epsilon with R².",
+        "inputs": "Quarter-dated paired daily log returns with both values present.",
+        "calculation": "Compute correlations and average-rank correlation; fit intercept and slope by least squares; compute R² from SSE/SST.",
+        "rule": "Direct numerical display only; beta is not labeled a hedge ratio.",
+        "interpretation": "The measurements summarize linear/rank co-movement, directional agreement, and cross-sectional dispersion around a fitted line.",
+        "assumptions": "Paired rows are comparable and descriptive OLS is numerically defined; no distributional inference is made.",
+        "failure_modes": "Outliers, nonlinear structure, heteroskedasticity, serial dependence, small samples, and regime mixtures can mislead.",
+        "does_not_imply": "Causality, stable beta, hedge effectiveness, predictability, or statistical significance.",
+        "related_chart": "Contemporaneous return scatter.",
+        "research_relevance": "Changes in descriptive co-movement can identify periods requiring company, sector, liquidity, or event context.",
+    },
+    "lag_correlation": {
+        "question": "How does descriptive return correlation vary across the fixed lag profile?",
+        "definition": "corr(r_A(t),r_B(t+lag)) for every integer lag -5 through +5.",
+        "inputs": "Quarter-dated paired log returns; each lag uses its reported valid shifted-pair count.",
+        "calculation": "Shift B within the quarter, drop incomplete pairs, compute Pearson correlation, then locate signed maxima in negative and positive lag subsets.",
+        "rule": "Evaluate exact rules: lag-0 equals the full-profile maximum; positive-lag peak exceeds negative-lag peak.",
+        "interpretation": "The profile describes where sample correlations are numerically largest under the fixed sign convention.",
+        "assumptions": "The lag convention is understood; shifted samples are comparable; descriptive correlations are sufficiently defined.",
+        "failure_modes": "Serial correlation, common multi-session shocks, unequal liquidity, sample loss at lags, multiple testing intuition, and small samples can create off-zero peaks.",
+        "does_not_imply": "That A leads B, B will catch up, predictive power, causal timing, or a trade.",
+        "related_chart": "Lagged cross-correlation.",
+        "research_relevance": "Profile changes can motivate falsifiable timing questions for a separate formal research design.",
+    },
+    "event_response": {
+        "question": "What response-return paths are observed around fixed large-return event dates?",
+        "definition": "For source dates with |log return|>=3%, cumulative response log return at offsets -5 through +5 common sessions.",
+        "inputs": "Full aligned return series, event dates assigned to the quarter, and only complete fixed windows.",
+        "calculation": "Select qualifying source dates, extract full-series windows, and compute per-offset event counts, means, and medians.",
+        "rule": "Direct summaries only; no response threshold or predictive category is applied.",
+        "interpretation": "The values describe the center and sample size of observed response paths around qualifying dates.",
+        "assumptions": "The fixed event definition is useful descriptively and complete-window selection does not represent all possible events.",
+        "failure_modes": "Few events, overlapping windows, common shocks, asymmetric event signs, outliers, and selection on large moves can mislead.",
+        "does_not_imply": "Causal response, repeatability, predictability, mean reversion, or trading profitability.",
+        "related_chart": "Event-centered response.",
+        "research_relevance": "Event-path dispersion can identify dated cases needing sourced company or market context and competing explanations.",
+    },
+}
+
 
 def _number(value: float | int) -> float | int | None:
     return None if pd.isna(value) or np.isinf(value) else float(value)
@@ -85,6 +153,7 @@ def write_measurements(output: Path, records: list[dict]) -> Path:
     payload = {
         "label": "DETERMINISTIC DESCRIPTIVE MEASUREMENTS — NOT INTERPRETATION",
         "formulas": FORMULAS,
+        "observation_contracts": MACHINE_OBSERVATION_CONTRACTS,
         "fixed_definitions": {"event_threshold": 0.03, "event_window": [-5, 5], "lag_range": [-5, 5], "return": "daily log return"},
         "prohibited_uses": ["causal lead-lag claims", "predictability claims", "mean-reversion claims", "pair quality", "trading opportunity", "training labels", "formal classifications"],
         "records": records,

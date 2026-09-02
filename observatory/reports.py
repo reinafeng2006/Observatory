@@ -9,6 +9,7 @@ from pathlib import Path
 import pandas as pd
 
 from .core import LABEL, RunConfig
+from .measurements import MACHINE_OBSERVATION_CONTRACTS
 
 PLOT_ROWS = (
     ("Daily log-return overlay", "01_return_overlay.png", "return_overlay"),
@@ -72,23 +73,48 @@ def _machine_html(kind: str, machine: dict, a: str, b: str) -> str:
     returns, linear = machine["return_measures"], machine["linear_response_b_on_a"]
     if kind == "return_overlay":
         items = ((f"Volatility {a}", returns["volatility"][a]), (f"Volatility {b}", returns["volatility"][b]), (f"Volatility ratio {b}/{a}", returns["volatility_ratio_b_over_a"]), ("Same-sign share", returns["same_sign_share"]))
+        statement = f"{a} volatility={_fmt(returns['volatility'][a])}; {b} volatility={_fmt(returns['volatility'][b])}; B/A ratio={_fmt(returns['volatility_ratio_b_over_a'])}; same-sign share={_fmt(returns['same_sign_share'])}."
     elif kind == "normalized_price":
         items = ((f"Quarter-end normalized {a}", machine["normalized_end"][a]), (f"Quarter-end normalized {b}", machine["normalized_end"][b]))
+        statement = f"Quarter-end normalized levels: {a}={_fmt(machine['normalized_end'][a])}; {b}={_fmt(machine['normalized_end'][b])}."
     elif kind == "return_scatter":
         items = (("Pearson correlation", returns["pearson"]), ("Spearman correlation", returns["spearman"]), ("Same-sign share", returns["same_sign_share"]), (f"OLS slope ({b} on {a})", linear["slope"]), ("OLS R²", linear["r_squared"]))
+        statement = f"Pearson={_fmt(returns['pearson'])}; Spearman={_fmt(returns['spearman'])}; same-sign share={_fmt(returns['same_sign_share'])}; OLS slope={_fmt(linear['slope'])}; R²={_fmt(linear['r_squared'])}."
     elif kind == "lag_correlation":
         lag_rows = "".join(f"<tr><td>{r['lag']:+d}</td><td>{_fmt(r['correlation'])}</td><td>{r['sample_size']}</td></tr>" for r in machine["lag_profile"])
         peaks = f"<p>Lag 0: {_fmt(machine['lag0'])}; positive peak: {html.escape(str(machine['positive_lag_peak']))}; negative peak: {html.escape(str(machine['negative_lag_peak']))}</p>"
         rules = "".join(f"<li><code>{html.escape(s['rule'])}</code>: {html.escape(s['statement'])}</li>" for s in machine["deterministic_statements"])
-        return f"<div class=\"machine\"><h4>Machine Measurement</h4>{peaks}<table class=\"mini\"><tr><th>Lag</th><th>Correlation</th><th>n</th></tr>{lag_rows}</table><h5>Deterministic structural statements</h5><ul>{rules}</ul><p class=\"formula\">No causal or predictive meaning is assigned.</p></div>"
+        intermediate = f"{peaks}<table class=\"mini\"><tr><th>Lag</th><th>Correlation</th><th>n</th></tr>{lag_rows}</table>"
+        statement = f"<ul>{rules}</ul>"
+        return _machine_contract_html(kind, intermediate, statement)
     else:
         summaries = []
         for summary in machine["event_aligned"]:
             offset_rows = "".join(f"<tr><td>{r['offset']:+d}</td><td>{_fmt(r['mean'])}</td><td>{_fmt(r['median'])}</td><td>{r['observation_count']}</td></tr>" for r in summary["offsets"])
             summaries.append(f"<p>{summary['source']} events → {summary['response']} response; events n={summary['event_count']}</p><table class=\"mini\"><tr><th>Offset</th><th>Mean</th><th>Median</th><th>n</th></tr>{offset_rows}</table>")
-        return f"<div class=\"machine\"><h4>Machine Measurement</h4>{''.join(summaries) or '<p>No qualifying complete-window events.</p>'}<p class=\"formula\">Fixed event formulas only; no causal explanation.</p></div>"
+        intermediate = "".join(summaries) or "<p>No qualifying complete-window events.</p>"
+        statement = "Exact event counts and per-offset mean/median response values are displayed above; no further state is assigned."
+        return _machine_contract_html(kind, intermediate, statement)
     rows = "".join(f"<tr><th>{html.escape(label)}</th><td>{_fmt(value)}</td></tr>" for label, value in items)
-    return f"<div class=\"machine\"><h4>Machine Measurement</h4><table class=\"mini\">{rows}</table><p class=\"formula\">See machine_measurements.json for formulas, inputs, and rules.</p></div>"
+    return _machine_contract_html(kind, f"<table class=\"mini\">{rows}</table>", html.escape(statement))
+
+
+def _machine_contract_html(kind: str, intermediate_html: str, statement_html: str) -> str:
+    contract = MACHINE_OBSERVATION_CONTRACTS[kind]
+    fields = (
+        ("Question", contract["question"]), ("Definition", contract["definition"]),
+        ("Inputs", contract["inputs"]), ("Calculation", contract["calculation"]),
+    )
+    opening = "".join(f"<h5>{label}</h5><p>{html.escape(value)}</p>" for label, value in fields)
+    closing_fields = (
+        ("Interpretation", contract["interpretation"]),
+        ("Assumptions", contract["assumptions"]), ("Failure modes", contract["failure_modes"]),
+        ("Does NOT imply", contract["does_not_imply"]), ("Related chart", contract["related_chart"]),
+        ("Research relevance", contract["research_relevance"]),
+    )
+    closing = "".join(f"<h5>{label}</h5><p>{html.escape(value)}</p>" for label, value in closing_fields)
+    rule = html.escape(contract["rule"])
+    return f"<div class=\"machine\"><h4>Machine Observation</h4>{opening}<h5>Intermediate values</h5>{intermediate_html}<h5>Rule</h5><p>{rule}</p><h5>Machine statement</h5><div>{statement_html}</div>{closing}</div>"
 
 
 def _human_form(pair: str, quarter: str, kind: str) -> str:
